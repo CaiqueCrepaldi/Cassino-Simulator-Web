@@ -36,10 +36,13 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
   const [rounds, setRounds] = useState(0)
   const [wins, setWins] = useState(0)
 
-  const betVal = parseFloat(bet) || 0
+  const betVal  = parseFloat(bet) || 0
+  const winRate = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
+  const isWin   = msgColor === '#00e676'
+  const isTie   = msgColor === '#FFD700'
 
   async function deal() {
-    if (betVal <= 0 || betVal > balance) { setMessage('Aposta inválida!'); setMsgColor('#FF4444'); return }
+    if (betVal <= 0 || betVal > balance) { setMessage('Aposta inválida!'); setMsgColor('#ff5252'); return }
     try {
       const res = await api.blackjack.deal(betVal) as Record<string, unknown>
       setShowDealer(false)
@@ -64,7 +67,7 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
       }
     } catch (err: unknown) {
       setMessage(err instanceof Error ? err.message : 'Erro na conexão')
-      setMsgColor('#FF4444')
+      setMsgColor('#ff5252')
     }
   }
 
@@ -72,19 +75,18 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
     if (phase !== 'playing') return
     try {
       const res = await api.blackjack.hit(playerHand, deck) as Record<string, unknown>
-      const newHand = res.playerHand as Card[]
-      setPlayerHand(newHand)
+      setPlayerHand(res.playerHand as Card[])
       setDeck(res.deck as Card[])
       if (res.bust) {
         setShowDealer(true)
         setPhase('done')
         setRounds(r => r + 1)
         setMessage(`💥 Estourou! (${res.playerScore}) — Perdeu!`)
-        setMsgColor('#FF4444')
+        setMsgColor('#ff5252')
       }
     } catch (err: unknown) {
       setMessage(err instanceof Error ? err.message : 'Erro na conexão')
-      setMsgColor('#FF4444')
+      setMsgColor('#ff5252')
     }
   }
 
@@ -105,38 +107,36 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
       if (outcome === 'player_wins' || outcome === 'dealer_bust') {
         setWins(w => w + 1)
         setMessage(`🎉 Você ganhou! (${ps} vs ${ds}) — R$ ${(res.prize as number).toFixed(2)}!`)
-        setMsgColor('#00FF00')
+        setMsgColor('#00e676')
       } else if (outcome === 'push') {
         setMessage(`🤝 Empate! (${ps} vs ${ds}) — Devolvido!`)
         setMsgColor('#FFD700')
       } else {
         setMessage(`❌ Dealer ganhou! (${ds} vs ${ps}) — Perdeu!`)
-        setMsgColor('#FF4444')
+        setMsgColor('#ff5252')
       }
     } catch (err: unknown) {
       setMessage(err instanceof Error ? err.message : 'Erro na conexão')
-      setMsgColor('#FF4444')
+      setMsgColor('#ff5252')
     }
   }
 
   async function doubleDown() {
     if (phase !== 'playing' || playerHand.length !== 2) return
-    if (betVal > balance) { setMessage('Saldo insuficiente para dobrar!'); setMsgColor('#FF4444'); return }
+    if (betVal > balance) { setMessage('Saldo insuficiente para dobrar!'); setMsgColor('#ff5252'); return }
     await stand(true)
   }
-
-  const winRate = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
 
   return (
     <GameShell title="🃏 BLACKJACK" onBack={onBack} balance={balance}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, maxWidth: 480, margin: '0 auto' }}>
 
         {/* Dealer hand */}
-        <div style={{ width: '100%' }}>
-          <p style={{ color: '#aaa', fontSize: 13, marginBottom: 6 }}>
-            Dealer {dealerHand.length > 0 ? `(${showDealer ? handScore(dealerHand) : '?'})` : ''}
+        <div className="glass" style={{ width: '100%', padding: '14px 16px' }}>
+          <p style={{ color: '#555', fontSize: 10, letterSpacing: 1.5, marginBottom: 10 }}>
+            DEALER {dealerHand.length > 0 ? `— ${showDealer ? handScore(dealerHand) : '?'}` : ''}
           </p>
-          <div style={{ display: 'flex', gap: 8, minHeight: 90 }}>
+          <div style={{ display: 'flex', gap: 8, minHeight: 92, flexWrap: 'wrap' }}>
             {dealerHand.map((c, i) => (
               <CardDisplay key={i} card={i === 1 && !showDealer ? null : c} />
             ))}
@@ -144,11 +144,11 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
         </div>
 
         {/* Player hand */}
-        <div style={{ width: '100%' }}>
-          <p style={{ color: '#aaa', fontSize: 13, marginBottom: 6 }}>
-            Você {playerHand.length > 0 ? `(${handScore(playerHand)})` : ''}
+        <div className="glass" style={{ width: '100%', padding: '14px 16px' }}>
+          <p style={{ color: '#555', fontSize: 10, letterSpacing: 1.5, marginBottom: 10 }}>
+            VOCÊ {playerHand.length > 0 ? `— ${handScore(playerHand)}` : ''}
           </p>
-          <div style={{ display: 'flex', gap: 8, minHeight: 90 }}>
+          <div style={{ display: 'flex', gap: 8, minHeight: 92, flexWrap: 'wrap' }}>
             {playerHand.map((c, i) => <CardDisplay key={i} card={c} />)}
           </div>
         </div>
@@ -156,13 +156,24 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
         {/* Controls */}
         {phase === 'idle' && (
           <div style={{ display: 'flex', gap: 10, width: '100%', alignItems: 'center' }}>
-            <label style={{ color: '#aaa', fontSize: 13, whiteSpace: 'nowrap' }}>Aposta R$</label>
-            <input type="number" min="1" value={bet} onChange={e => setBet(e.target.value)}
-              style={{ flex: 1, padding: '8px 10px', background: '#222', color: '#fff', border: '1px solid #444', borderRadius: 6, fontSize: 14 }} />
-            <button onClick={deal}
-              style={{ background: '#006622', color: '#fff', fontWeight: 'bold', fontSize: 15, padding: '10px 20px', borderRadius: 8 }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#004416')}
-              onMouseLeave={e => (e.currentTarget.style.background = '#006622')}>
+            <label style={{ color: '#555', fontSize: 10, letterSpacing: 1.5, whiteSpace: 'nowrap' }}>APOSTA R$</label>
+            <input type="number" min="1" value={bet} onChange={e => setBet(e.target.value)} className="input-field" />
+            <button
+              onClick={deal}
+              style={{
+                background: '#006622',
+                color: '#fff',
+                fontFamily: 'Orbitron, sans-serif',
+                fontWeight: 700,
+                fontSize: 14,
+                padding: '10px 22px',
+                borderRadius: 9,
+                whiteSpace: 'nowrap',
+                letterSpacing: 1,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,102,34,0.5)' }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+            >
               🃏 DEAL
             </button>
           </div>
@@ -170,23 +181,59 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
 
         {phase === 'playing' && (
           <div style={{ display: 'flex', gap: 10, width: '100%' }}>
-            <button onClick={hit}
-              style={{ flex: 1, background: '#004488', color: '#fff', fontWeight: 'bold', fontSize: 15, padding: '12px 0', borderRadius: 8 }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#002266')}
-              onMouseLeave={e => (e.currentTarget.style.background = '#004488')}>
+            <button
+              onClick={hit}
+              style={{
+                flex: 1,
+                background: '#003D99',
+                color: '#fff',
+                fontFamily: 'Orbitron, sans-serif',
+                fontWeight: 700,
+                fontSize: 14,
+                padding: '13px 0',
+                borderRadius: 9,
+                letterSpacing: 1,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,61,153,0.5)' }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+            >
               ➕ HIT
             </button>
-            <button onClick={() => stand(false)}
-              style={{ flex: 1, background: '#880000', color: '#fff', fontWeight: 'bold', fontSize: 15, padding: '12px 0', borderRadius: 8 }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#660000')}
-              onMouseLeave={e => (e.currentTarget.style.background = '#880000')}>
+            <button
+              onClick={() => stand(false)}
+              style={{
+                flex: 1,
+                background: '#880000',
+                color: '#fff',
+                fontFamily: 'Orbitron, sans-serif',
+                fontWeight: 700,
+                fontSize: 14,
+                padding: '13px 0',
+                borderRadius: 9,
+                letterSpacing: 1,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(136,0,0,0.5)' }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+            >
               ✋ STAND
             </button>
             {playerHand.length === 2 && betVal <= balance && (
-              <button onClick={doubleDown}
-                style={{ flex: 1, background: '#664400', color: '#fff', fontWeight: 'bold', fontSize: 15, padding: '12px 0', borderRadius: 8 }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#442200')}
-                onMouseLeave={e => (e.currentTarget.style.background = '#664400')}>
+              <button
+                onClick={doubleDown}
+                style={{
+                  flex: 1,
+                  background: '#664400',
+                  color: '#fff',
+                  fontFamily: 'Orbitron, sans-serif',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  padding: '13px 0',
+                  borderRadius: 9,
+                  letterSpacing: 1,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(102,68,0,0.5)' }}
+                onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+              >
                 ×2 DOBRAR
               </button>
             )}
@@ -194,24 +241,45 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
         )}
 
         {phase === 'done' && (
-          <button onClick={() => { setPhase('idle'); setPlayerHand([]); setDealerHand([]); setMessage('') }}
-            style={{ background: '#006622', color: '#fff', fontWeight: 'bold', fontSize: 15, padding: '12px 40px', borderRadius: 8 }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#004416')}
-            onMouseLeave={e => (e.currentTarget.style.background = '#006622')}>
+          <button
+            onClick={() => { setPhase('idle'); setPlayerHand([]); setDealerHand([]); setMessage('') }}
+            style={{
+              background: '#005500',
+              color: '#fff',
+              fontFamily: 'Orbitron, sans-serif',
+              fontWeight: 700,
+              fontSize: 14,
+              padding: '13px 48px',
+              borderRadius: 9,
+              letterSpacing: 1,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,85,0,0.5)' }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+          >
             🔄 NOVA RODADA
           </button>
         )}
 
         {message && (
-          <div style={{ color: msgColor, fontWeight: 'bold', fontSize: 16, textAlign: 'center', background: '#111', padding: '10px 20px', borderRadius: 8, width: '100%' }}>
+          <div style={{
+            color: msgColor,
+            background: isWin ? 'rgba(0,230,118,0.08)' : isTie ? 'rgba(255,215,0,0.08)' : 'rgba(255,82,82,0.08)',
+            border: `1px solid ${isWin ? 'rgba(0,230,118,0.25)' : isTie ? 'rgba(255,215,0,0.25)' : 'rgba(255,82,82,0.25)'}`,
+            borderRadius: 10,
+            fontWeight: 700,
+            fontSize: 16,
+            textAlign: 'center',
+            padding: '12px 20px',
+            width: '100%',
+          }}>
             {message}
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 20, color: '#888', fontSize: 13 }}>
-          <span>Rodadas: {rounds}</span>
-          <span>Vitórias: {wins}</span>
-          <span>Taxa: {winRate}%</span>
+        <div className="stats-bar">
+          <div className="stat-item"><span className="stat-label">RODADAS</span><span className="stat-value">{rounds}</span></div>
+          <div className="stat-item"><span className="stat-label">VITÓRIAS</span><span className="stat-value">{wins}</span></div>
+          <div className="stat-item"><span className="stat-label">TAXA</span><span className="stat-value">{winRate}%</span></div>
         </div>
       </div>
     </GameShell>
@@ -221,16 +289,35 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
 function CardDisplay({ card }: { card: Card | null }) {
   if (!card) {
     return (
-      <div style={{ width: 60, height: 86, background: '#1a4a8a', borderRadius: 8, border: '2px solid #2266aa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
+      <div style={{
+        width: 62, height: 90,
+        background: 'linear-gradient(135deg, #1a3a8a, #0d1f5c)',
+        borderRadius: 9,
+        border: '1px solid rgba(68,102,187,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 26,
+        boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+      }}>
         🂠
       </div>
     )
   }
   const red = isRed(card.suit)
   return (
-    <div style={{ width: 60, height: 86, background: '#fff', borderRadius: 8, border: '2px solid #ccc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: red ? '#CC0000' : '#111', fontWeight: 'bold', fontSize: 16, userSelect: 'none' }}>
+    <div style={{
+      width: 62, height: 90,
+      background: '#fafafa',
+      borderRadius: 9,
+      border: '1px solid #ddd',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      color: red ? '#CC0000' : '#111',
+      fontWeight: 700,
+      userSelect: 'none',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+    }}>
       <span style={{ fontSize: 18 }}>{card.rank}</span>
-      <span style={{ fontSize: 20 }}>{card.suit}</span>
+      <span style={{ fontSize: 22 }}>{card.suit}</span>
     </div>
   )
 }

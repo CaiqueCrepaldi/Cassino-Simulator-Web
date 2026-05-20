@@ -9,19 +9,64 @@ interface Props {
 
 export default function GameShell({ title, onBack, balance, children }: Props) {
   return (
-    <div style={{ background: '#0d0d0d', minHeight: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ background: '#111', padding: '10px 20px', display: 'flex', alignItems: 'center', borderBottom: '1px solid #222', flexShrink: 0 }}>
+      <div style={{
+        background: 'rgba(7,7,15,0.85)',
+        backdropFilter: 'blur(14px)',
+        borderBottom: '1px solid rgba(255,215,0,0.12)',
+        padding: '11px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        flexShrink: 0,
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+      }}>
         <button
           onClick={onBack}
-          style={{ background: '#222', color: '#ccc', fontSize: 13, fontWeight: 'bold', padding: '6px 14px', borderRadius: 6, marginRight: 16 }}
-          onMouseEnter={e => (e.currentTarget.style.background = '#333')}
-          onMouseLeave={e => (e.currentTarget.style.background = '#222')}
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            color: '#888',
+            border: '1px solid rgba(255,255,255,0.09)',
+            borderRadius: 8,
+            fontSize: 13,
+            padding: '7px 16px',
+            letterSpacing: 0.3,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#ddd' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#888' }}
         >
           ← Menu
         </button>
-        <span style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 18, flex: 1, textAlign: 'center' }}>{title}</span>
-        <span style={{ color: '#00FF00', fontWeight: 'bold', fontSize: 14 }}>💰 R$ {balance.toFixed(2)}</span>
+
+        <span style={{
+          fontFamily: 'Orbitron, sans-serif',
+          fontWeight: 700,
+          fontSize: 15,
+          color: '#FFD700',
+          flex: 1,
+          textAlign: 'center',
+          letterSpacing: 2,
+          textShadow: '0 0 14px rgba(255,215,0,0.45)',
+        }}>
+          {title}
+        </span>
+
+        <div style={{
+          background: 'rgba(0,230,118,0.07)',
+          border: '1px solid rgba(0,230,118,0.18)',
+          borderRadius: 8,
+          padding: '6px 14px',
+          textAlign: 'right',
+          flexShrink: 0,
+        }}>
+          <div style={{ color: '#444', fontSize: 8, letterSpacing: 2, marginBottom: 2 }}>BANCA</div>
+          <div style={{ color: '#00e676', fontFamily: 'Orbitron, sans-serif', fontWeight: 700, fontSize: 14 }}>
+            R$ {balance.toFixed(2)}
+          </div>
+        </div>
       </div>
 
       {/* Content */}

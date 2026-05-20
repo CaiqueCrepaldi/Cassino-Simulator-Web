@@ -20,12 +20,12 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
   const [wins, setWins] = useState(0)
   const [autoMode, setAutoMode] = useState(false)
 
-  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null)
+  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null)
   const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const balanceRef  = useRef(balance)
+  const balanceRef   = useRef(balance)
   balanceRef.current = balance
 
-  const stop = useCallback(() => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }, [])
+  const stop     = useCallback(() => { if (timerRef.current)     { clearInterval(timerRef.current);     timerRef.current     = null } }, [])
   const stopAuto = useCallback(() => { if (autoTimerRef.current) { clearInterval(autoTimerRef.current); autoTimerRef.current = null } }, [])
   useEffect(() => () => { stop(); stopAuto() }, [stop, stopAuto])
 
@@ -33,7 +33,7 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
     const betVal = parseFloat(bet) || 0
     if (betVal <= 0 || betVal > balanceRef.current) {
       setMessage('Aposta inválida ou saldo insuficiente!')
-      setMsgColor('#FF4444')
+      setMsgColor('#ff5252')
       setAutoMode(false)
       stopAuto()
       return
@@ -56,12 +56,12 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
       if (res.win) {
         setWins(w => w + 1)
         setMessage(`🎉 ${result === 'heads' ? '🪙 Cara' : '👑 Coroa'}! Ganhou R$ ${res.prize.toFixed(2)}!`)
-        setMsgColor('#00FF00')
+        setMsgColor('#00e676')
         setStreak(s => streakType === 'win' ? s + 1 : 1)
         setStreakType('win')
       } else {
         setMessage(`❌ ${result === 'heads' ? '🪙 Cara' : '👑 Coroa'}! Perdeu!`)
-        setMsgColor('#FF4444')
+        setMsgColor('#ff5252')
         setStreak(s => streakType === 'loss' ? s + 1 : 1)
         setStreakType('loss')
       }
@@ -69,7 +69,7 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
       stop()
       setFlipping(false)
       setMessage(err instanceof Error ? err.message : 'Erro na conexão')
-      setMsgColor('#FF4444')
+      setMsgColor('#ff5252')
     }
   }
 
@@ -90,21 +90,38 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
     }
   }
 
-  const winRate = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
+  const winRate    = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
   const coinDisplay = face === 'heads' ? '🪙' : '👑'
+  const isWin = msgColor === '#00e676'
 
   return (
     <GameShell title="🪙 COIN FLIP" onBack={onBack} balance={balance}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, maxWidth: 380, margin: '0 auto' }}>
 
         {/* Coin */}
-        <div style={{ fontSize: 100, lineHeight: 1, filter: flipping ? 'brightness(0.6)' : 'brightness(1)', transition: 'filter 0.06s', userSelect: 'none' }}>
+        <div style={{
+          fontSize: 110,
+          lineHeight: 1,
+          filter: flipping ? 'brightness(0.5) saturate(0)' : 'brightness(1)',
+          transition: 'filter 0.08s',
+          userSelect: 'none',
+          textShadow: flipping ? 'none' : '0 0 30px rgba(187,187,0,0.4)',
+          padding: '10px 0',
+        }}>
           {coinDisplay}
         </div>
 
         {/* Streak */}
         {streak > 1 && streakType && (
-          <div style={{ fontWeight: 'bold', fontSize: 14, color: streakType === 'win' ? '#00FF00' : '#FF6666' }}>
+          <div style={{
+            fontWeight: 700,
+            fontSize: 14,
+            color: streakType === 'win' ? '#00e676' : '#ff5252',
+            background: streakType === 'win' ? 'rgba(0,230,118,0.08)' : 'rgba(255,82,82,0.08)',
+            border: `1px solid ${streakType === 'win' ? 'rgba(0,230,118,0.2)' : 'rgba(255,82,82,0.2)'}`,
+            borderRadius: 8,
+            padding: '6px 16px',
+          }}>
             {streakType === 'win' ? '🔥' : '❄️'} Sequência de {streakType === 'win' ? 'vitórias' : 'derrotas'}: {streak}×
           </div>
         )}
@@ -112,46 +129,102 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
         {/* Side selection */}
         <div style={{ display: 'flex', gap: 12, width: '100%' }}>
           {(['heads', 'tails'] as Side[]).map(s => (
-            <button key={s} onClick={() => setChosen(s)} disabled={flipping || autoMode}
-              style={{ flex: 1, padding: '14px 0', fontWeight: 'bold', fontSize: 16, borderRadius: 10,
-                background: chosen === s ? (s === 'heads' ? '#555500' : '#004444') : '#1a1a1a',
-                color: '#fff', border: chosen === s ? '2px solid #FFD700' : '2px solid #333', transition: 'all 0.15s' }}>
+            <button
+              key={s}
+              onClick={() => setChosen(s)}
+              disabled={flipping || autoMode}
+              style={{
+                flex: 1,
+                padding: '14px 0',
+                fontWeight: 700,
+                fontSize: 16,
+                borderRadius: 11,
+                background: chosen === s
+                  ? s === 'heads' ? 'rgba(187,187,0,0.15)' : 'rgba(0,170,170,0.15)'
+                  : 'rgba(255,255,255,0.03)',
+                color: chosen === s ? '#fff' : '#555',
+                border: chosen === s
+                  ? `1px solid ${s === 'heads' ? 'rgba(187,187,0,0.45)' : 'rgba(0,170,170,0.45)'}`
+                  : '1px solid rgba(255,255,255,0.07)',
+                boxShadow: chosen === s
+                  ? `0 0 16px ${s === 'heads' ? 'rgba(187,187,0,0.2)' : 'rgba(0,170,170,0.2)'}`
+                  : 'none',
+                transition: 'all 0.2s',
+              }}
+            >
               {s === 'heads' ? '🪙 Cara' : '👑 Coroa'}
             </button>
           ))}
         </div>
 
         {/* Bet */}
-        <div style={{ display: 'flex', gap: 10, width: '100%', alignItems: 'center' }}>
-          <label style={{ color: '#aaa', fontSize: 13, whiteSpace: 'nowrap' }}>Aposta R$</label>
-          <input type="number" min="1" value={bet} onChange={e => setBet(e.target.value)} disabled={flipping || autoMode}
-            style={{ flex: 1, padding: '8px 10px', background: '#222', color: '#fff', border: '1px solid #444', borderRadius: 6, fontSize: 14 }} />
+        <div style={{ display: 'flex', gap: 12, width: '100%', alignItems: 'center' }}>
+          <label style={{ color: '#555', fontSize: 10, letterSpacing: 1.5, whiteSpace: 'nowrap' }}>APOSTA R$</label>
+          <input type="number" min="1" value={bet} onChange={e => setBet(e.target.value)}
+            disabled={flipping || autoMode} className="input-field" />
         </div>
 
         {/* Buttons */}
         <div style={{ display: 'flex', gap: 10, width: '100%' }}>
-          <button onClick={handleFlip} disabled={flipping || autoMode}
-            style={{ flex: 2, background: flipping ? '#333' : '#555500', color: '#fff', fontWeight: 'bold', fontSize: 15, padding: '12px 0', borderRadius: 10 }}
-            onMouseEnter={e => { if (!flipping && !autoMode) e.currentTarget.style.background = '#777700' }}
-            onMouseLeave={e => { if (!flipping && !autoMode) e.currentTarget.style.background = '#555500' }}>
-            {flipping ? '⏳ Girando...' : '🪙 JOGAR'}
+          <button
+            onClick={handleFlip}
+            disabled={flipping || autoMode}
+            style={{
+              flex: 2,
+              background: flipping ? 'rgba(255,255,255,0.04)' : '#888800',
+              color: '#fff',
+              fontFamily: 'Orbitron, sans-serif',
+              fontWeight: 700,
+              fontSize: 14,
+              padding: '13px 0',
+              borderRadius: 10,
+              border: flipping ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
+              letterSpacing: 1,
+            }}
+            onMouseEnter={e => { if (!flipping && !autoMode) e.currentTarget.style.boxShadow = '0 4px 20px rgba(136,136,0,0.5)' }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+          >
+            {flipping ? '⏳ GIRANDO...' : '🪙 JOGAR'}
           </button>
-          <button onClick={toggleAuto} disabled={flipping && !autoMode}
-            style={{ flex: 1, background: autoMode ? '#660000' : '#333', color: autoMode ? '#FF8888' : '#aaa', fontWeight: 'bold', fontSize: 13, padding: '12px 0', borderRadius: 10 }}>
-            {autoMode ? '⏹ Parar Auto' : '▶▶ Auto'}
+          <button
+            onClick={toggleAuto}
+            disabled={flipping && !autoMode}
+            style={{
+              flex: 1,
+              background: autoMode ? 'rgba(255,82,82,0.1)' : 'rgba(255,255,255,0.04)',
+              color: autoMode ? '#ff5252' : '#555',
+              border: autoMode ? '1px solid rgba(255,82,82,0.3)' : '1px solid rgba(255,255,255,0.07)',
+              fontWeight: 700,
+              fontSize: 13,
+              padding: '13px 0',
+              borderRadius: 10,
+            }}
+          >
+            {autoMode ? '⏹ Parar' : '▶▶ Auto'}
           </button>
         </div>
 
         {message && (
-          <div style={{ color: msgColor, fontWeight: 'bold', fontSize: 15, textAlign: 'center', background: '#111', padding: '10px 20px', borderRadius: 8, width: '100%' }}>
+          <div style={{
+            color: msgColor,
+            background: isWin ? 'rgba(0,230,118,0.08)' : 'rgba(255,82,82,0.08)',
+            border: `1px solid ${isWin ? 'rgba(0,230,118,0.25)' : 'rgba(255,82,82,0.25)'}`,
+            borderRadius: 10,
+            fontWeight: 700,
+            fontSize: 15,
+            textAlign: 'center',
+            padding: '12px 20px',
+            width: '100%',
+          }}>
             {message}
           </div>
         )}
 
-        {/* History */}
         {history.length > 0 && (
           <div style={{ width: '100%' }}>
-            <p style={{ color: '#888', fontSize: 12, marginBottom: 6 }}>Últimos {LAST_N} lançamentos:</p>
+            <p style={{ color: '#444', fontSize: 10, letterSpacing: 1.5, marginBottom: 8 }}>
+              ÚLTIMOS {LAST_N} LANÇAMENTOS
+            </p>
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               {history.map((s, i) => (
                 <span key={i} style={{ fontSize: 22 }}>{s === 'heads' ? '🪙' : '👑'}</span>
@@ -160,10 +233,10 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 20, color: '#888', fontSize: 13 }}>
-          <span>Rodadas: {rounds}</span>
-          <span>Vitórias: {wins}</span>
-          <span>Taxa: {winRate}%</span>
+        <div className="stats-bar">
+          <div className="stat-item"><span className="stat-label">RODADAS</span><span className="stat-value">{rounds}</span></div>
+          <div className="stat-item"><span className="stat-label">VITÓRIAS</span><span className="stat-value">{wins}</span></div>
+          <div className="stat-item"><span className="stat-label">TAXA</span><span className="stat-value">{winRate}%</span></div>
         </div>
       </div>
     </GameShell>

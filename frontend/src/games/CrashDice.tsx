@@ -32,8 +32,8 @@ export default function CrashDice({ balance, onBalanceChange, onBack }: GameProp
 
   async function handleRoll() {
     const betVal = parseFloat(bet) || 0
-    if (betVal <= 0 || betVal > balance) { setMessage('Aposta inválida!'); setMsgColor('#FF4444'); return }
-    if (selected.length === 0) { setMessage('Escolha pelo menos 1 número!'); setMsgColor('#FF4444'); return }
+    if (betVal <= 0 || betVal > balance) { setMessage('Aposta inválida!'); setMsgColor('#ff5252'); return }
+    if (selected.length === 0) { setMessage('Escolha pelo menos 1 número!'); setMsgColor('#ff5252'); return }
     if (rolling) return
 
     setRolling(true)
@@ -54,51 +54,83 @@ export default function CrashDice({ balance, onBalanceChange, onBack }: GameProp
       if (result.win) {
         setWins(w => w + 1)
         setMessage(`🎉 ${result.reason} — Ganhou R$ ${result.prize.toFixed(2)}!`)
-        setMsgColor('#00FF00')
+        setMsgColor('#00e676')
       } else {
         setMessage(`❌ Dados: ${result.d1} e ${result.d2} — Perdeu!`)
-        setMsgColor('#FF4444')
+        setMsgColor('#ff5252')
       }
     } catch (err: unknown) {
       stop()
       setRolling(false)
       setMessage(err instanceof Error ? err.message : 'Erro na conexão')
-      setMsgColor('#FF4444')
+      setMsgColor('#ff5252')
     }
   }
 
   const winRate = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
+  const isWin = msgColor === '#00e676'
 
   return (
     <GameShell title="🎲 CRASH DICE" onBack={onBack} balance={balance}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, maxWidth: 420, margin: '0 auto' }}>
 
         {/* Dice display */}
-        <div style={{ display: 'flex', gap: 24, background: '#111', padding: '24px 40px', borderRadius: 14, border: '2px solid #333' }}>
+        <div style={{
+          display: 'flex', gap: 20,
+          background: 'rgba(255,136,0,0.06)',
+          border: `1px solid ${rolling ? 'rgba(255,136,0,0.4)' : 'rgba(255,136,0,0.18)'}`,
+          padding: '28px 40px',
+          borderRadius: 16,
+          boxShadow: rolling ? '0 0 40px rgba(255,136,0,0.15)' : '0 4px 20px rgba(0,0,0,0.4)',
+          transition: 'all 0.3s',
+        }}>
           {[dice.d1, dice.d2].map((d, i) => (
-            <div key={i} style={{ fontSize: 72, lineHeight: 1, filter: rolling ? 'brightness(0.7)' : 'brightness(1)', transition: 'filter 0.1s' }}>
+            <div key={i} style={{
+              fontSize: 72,
+              lineHeight: 1,
+              filter: rolling ? 'brightness(0.6) saturate(0.5)' : 'brightness(1)',
+              transition: 'filter 0.1s',
+              textShadow: rolling ? 'none' : '0 0 16px rgba(255,136,0,0.3)',
+            }}>
               {FACES[d - 1]}
             </div>
           ))}
         </div>
 
         {finalDice && (
-          <div style={{ color: '#aaa', fontSize: 14 }}>
-            Dados: <strong style={{ color: '#fff' }}>{finalDice.d1}</strong> + <strong style={{ color: '#fff' }}>{finalDice.d2}</strong> = <strong style={{ color: '#FFD700' }}>{finalDice.d1 + finalDice.d2}</strong>
+          <div style={{ color: '#888', fontSize: 14 }}>
+            Dados: <strong style={{ color: '#FFD700', fontFamily: 'Orbitron, sans-serif' }}>{finalDice.d1}</strong>
+            {' + '}
+            <strong style={{ color: '#FFD700', fontFamily: 'Orbitron, sans-serif' }}>{finalDice.d2}</strong>
+            {' = '}
+            <strong style={{ color: '#fff', fontFamily: 'Orbitron, sans-serif', fontSize: 16 }}>
+              {finalDice.d1 + finalDice.d2}
+            </strong>
           </div>
         )}
 
         {/* Number picker */}
         <div style={{ width: '100%' }}>
-          <p style={{ color: '#aaa', fontSize: 13, marginBottom: 8 }}>Escolha até 3 números (1-6):</p>
+          <p style={{ color: '#444', fontSize: 10, letterSpacing: 1.5, marginBottom: 10 }}>ESCOLHA ATÉ 3 NÚMEROS (1-6)</p>
           <div style={{ display: 'flex', gap: 8 }}>
             {[1, 2, 3, 4, 5, 6].map(n => (
-              <button key={n} onClick={() => toggleNumber(n)} disabled={rolling}
-                style={{ flex: 1, height: 44, fontWeight: 'bold', fontSize: 18, borderRadius: 8,
-                  background: selected.includes(n) ? '#FF8800' : '#222',
-                  color: selected.includes(n) ? '#fff' : '#888',
-                  border: selected.includes(n) ? '2px solid #FFD700' : '2px solid #333',
-                  transition: 'all 0.15s' }}>
+              <button
+                key={n}
+                onClick={() => toggleNumber(n)}
+                disabled={rolling}
+                style={{
+                  flex: 1,
+                  height: 48,
+                  fontWeight: 700,
+                  fontSize: 18,
+                  borderRadius: 9,
+                  background: selected.includes(n) ? 'rgba(255,136,0,0.18)' : 'rgba(255,255,255,0.04)',
+                  color: selected.includes(n) ? '#FF8800' : '#444',
+                  border: selected.includes(n) ? '1px solid rgba(255,136,0,0.5)' : '1px solid rgba(255,255,255,0.07)',
+                  boxShadow: selected.includes(n) ? '0 0 12px rgba(255,136,0,0.25)' : 'none',
+                  transition: 'all 0.15s',
+                }}
+              >
                 {n}
               </button>
             ))}
@@ -106,35 +138,68 @@ export default function CrashDice({ balance, onBalanceChange, onBack }: GameProp
         </div>
 
         {/* Payout table */}
-        <div style={{ background: '#111', borderRadius: 8, padding: '10px 16px', width: '100%', fontSize: 12, color: '#888' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}><span>Duplo exato no número escolhido</span><span style={{ color: '#FFD700' }}>5×</span></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}><span>Soma dos dados = número escolhido</span><span style={{ color: '#FFD700' }}>3×</span></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Um dado = número escolhido</span><span style={{ color: '#FFD700' }}>2×</span></div>
+        <div className="glass" style={{ padding: '12px 18px', width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ color: '#555', fontSize: 12 }}>Duplo exato no número escolhido</span>
+            <span style={{ color: '#FFD700', fontFamily: 'Orbitron, sans-serif', fontWeight: 700, fontSize: 12 }}>5×</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ color: '#555', fontSize: 12 }}>Soma dos dados = número escolhido</span>
+            <span style={{ color: '#FFD700', fontFamily: 'Orbitron, sans-serif', fontWeight: 700, fontSize: 12 }}>3×</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: '#555', fontSize: 12 }}>Um dado = número escolhido</span>
+            <span style={{ color: '#FFD700', fontFamily: 'Orbitron, sans-serif', fontWeight: 700, fontSize: 12 }}>2×</span>
+          </div>
         </div>
 
         {/* Bet + roll */}
         <div style={{ display: 'flex', gap: 10, width: '100%', alignItems: 'center' }}>
-          <label style={{ color: '#aaa', fontSize: 13, whiteSpace: 'nowrap' }}>Aposta R$</label>
-          <input type="number" min="1" value={bet} onChange={e => setBet(e.target.value)} disabled={rolling}
-            style={{ flex: 1, padding: '8px 10px', background: '#222', color: '#fff', border: '1px solid #444', borderRadius: 6, fontSize: 14 }} />
-          <button onClick={handleRoll} disabled={rolling}
-            style={{ background: rolling ? '#333' : '#FF8800', color: '#fff', fontWeight: 'bold', fontSize: 14, padding: '10px 20px', borderRadius: 8 }}
-            onMouseEnter={e => { if (!rolling) e.currentTarget.style.background = '#CC6600' }}
-            onMouseLeave={e => { if (!rolling) e.currentTarget.style.background = '#FF8800' }}>
+          <label style={{ color: '#555', fontSize: 10, letterSpacing: 1.5, whiteSpace: 'nowrap' }}>APOSTA R$</label>
+          <input type="number" min="1" value={bet} onChange={e => setBet(e.target.value)}
+            disabled={rolling} className="input-field" />
+          <button
+            onClick={handleRoll}
+            disabled={rolling}
+            style={{
+              background: rolling ? 'rgba(255,255,255,0.04)' : '#CC6600',
+              color: '#fff',
+              fontFamily: 'Orbitron, sans-serif',
+              fontWeight: 700,
+              fontSize: 13,
+              padding: '10px 18px',
+              borderRadius: 9,
+              border: rolling ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
+              whiteSpace: 'nowrap',
+              letterSpacing: 1,
+            }}
+            onMouseEnter={e => { if (!rolling) e.currentTarget.style.boxShadow = '0 4px 20px rgba(204,102,0,0.5)' }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+          >
             {rolling ? '⏳' : '🎲 ROLAR'}
           </button>
         </div>
 
         {message && (
-          <div style={{ color: msgColor, fontWeight: 'bold', fontSize: 15, textAlign: 'center', background: '#111', padding: '10px 20px', borderRadius: 8, width: '100%' }}>
+          <div style={{
+            color: msgColor,
+            background: isWin ? 'rgba(0,230,118,0.08)' : 'rgba(255,82,82,0.08)',
+            border: `1px solid ${isWin ? 'rgba(0,230,118,0.25)' : 'rgba(255,82,82,0.25)'}`,
+            borderRadius: 10,
+            fontWeight: 700,
+            fontSize: 15,
+            textAlign: 'center',
+            padding: '12px 20px',
+            width: '100%',
+          }}>
             {message}
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 20, color: '#888', fontSize: 13 }}>
-          <span>Rodadas: {rounds}</span>
-          <span>Vitórias: {wins}</span>
-          <span>Taxa: {winRate}%</span>
+        <div className="stats-bar">
+          <div className="stat-item"><span className="stat-label">RODADAS</span><span className="stat-value">{rounds}</span></div>
+          <div className="stat-item"><span className="stat-label">VITÓRIAS</span><span className="stat-value">{wins}</span></div>
+          <div className="stat-item"><span className="stat-label">TAXA</span><span className="stat-value">{winRate}%</span></div>
         </div>
       </div>
     </GameShell>

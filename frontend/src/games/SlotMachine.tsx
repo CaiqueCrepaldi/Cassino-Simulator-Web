@@ -30,15 +30,14 @@ export default function SlotMachine({ balance, onBalanceChange, onBack }: GamePr
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const betVal = parseFloat(bet) || 0
+  const winRate = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
 
   async function handleSpin() {
     if (spinning) return
-    if (betVal <= 0 || betVal > balance) { setMessage('Aposta inválida!'); setMsgColor('#FF4444'); return }
+    if (betVal <= 0 || betVal > balance) { setMessage('Aposta inválida!'); setMsgColor('#ff5252'); return }
 
     setSpinning(true)
     setMessage('')
-
-    // Animate while waiting for API
     intervalRef.current = setInterval(() => setReels(randomReels()), 60)
 
     try {
@@ -53,62 +52,131 @@ export default function SlotMachine({ balance, onBalanceChange, onBack }: GamePr
         const sym = SYMBOLS[result.reels[0]]
         setWins(w => w + 1)
         setMessage(`🎉 ${sym.icon}${sym.icon}${sym.icon} — Ganhou R$ ${result.prize.toFixed(2)}! (${result.multiplier}×)`)
-        setMsgColor('#00FF00')
+        setMsgColor('#00e676')
       } else {
         setMessage('Sem sorte desta vez...')
-        setMsgColor('#FF4444')
+        setMsgColor('#ff5252')
       }
     } catch (err: unknown) {
       clearInterval(intervalRef.current!)
       setSpinning(false)
       setMessage(err instanceof Error ? err.message : 'Erro na conexão')
-      setMsgColor('#FF4444')
+      setMsgColor('#ff5252')
     }
   }
 
-  const winRate = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
+  const isWin = msgColor === '#00e676'
 
   return (
     <GameShell title="🎰 SLOT MACHINE" onBack={onBack} balance={balance}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
-        <div style={{ display: 'flex', gap: 12, background: '#111', padding: 20, borderRadius: 12, border: '2px solid #333' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, maxWidth: 380, margin: '0 auto' }}>
+
+        {/* Reels */}
+        <div style={{
+          display: 'flex', gap: 10,
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,51,0,0.25)',
+          padding: '24px 28px',
+          borderRadius: 16,
+          boxShadow: spinning ? '0 0 30px rgba(255,51,0,0.2)' : '0 0 10px rgba(0,0,0,0.5)',
+          transition: 'box-shadow 0.3s',
+        }}>
           {reels.map((idx, i) => (
-            <div key={i} style={{ width: 80, height: 80, background: '#222', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, border: spinning ? '2px solid #FFD700' : '2px solid #444', transition: 'border-color 0.1s' }}>
+            <div
+              key={i}
+              style={{
+                width: 86,
+                height: 86,
+                background: spinning
+                  ? 'rgba(255,51,0,0.1)'
+                  : reels[0] === reels[1] && reels[1] === reels[2]
+                    ? 'rgba(0,230,118,0.1)'
+                    : 'rgba(255,255,255,0.05)',
+                borderRadius: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 44,
+                border: spinning
+                  ? '1px solid rgba(255,51,0,0.5)'
+                  : reels[0] === reels[1] && reels[1] === reels[2]
+                    ? '1px solid rgba(0,230,118,0.5)'
+                    : '1px solid rgba(255,255,255,0.08)',
+                transition: 'all 0.15s',
+                boxShadow: spinning ? '0 0 12px rgba(255,51,0,0.25)' : 'none',
+              }}
+            >
               {SYMBOLS[idx].icon}
             </div>
           ))}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <label style={{ color: '#ccc', fontSize: 14 }}>Aposta: R$</label>
-          <input type="number" min="1" max={balance} value={bet} onChange={e => setBet(e.target.value)} disabled={spinning}
-            style={{ width: 90, padding: '6px 10px', background: '#222', color: '#fff', border: '1px solid #444', borderRadius: 6, fontSize: 14 }} />
+        {/* Bet */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+          <label style={{ color: '#666', fontSize: 12, letterSpacing: 1, whiteSpace: 'nowrap' }}>APOSTA R$</label>
+          <input
+            type="number" min="1" max={balance} value={bet}
+            onChange={e => setBet(e.target.value)}
+            disabled={spinning}
+            className="input-field"
+          />
         </div>
 
-        <button onClick={handleSpin} disabled={spinning}
-          style={{ background: spinning ? '#444' : '#CC0000', color: '#fff', fontWeight: 'bold', fontSize: 16, padding: '12px 40px', borderRadius: 10, minWidth: 180 }}
-          onMouseEnter={e => { if (!spinning) e.currentTarget.style.background = '#990000' }}
-          onMouseLeave={e => { if (!spinning) e.currentTarget.style.background = '#CC0000' }}>
-          {spinning ? '⏳ Girando...' : '🎰 GIRAR'}
+        {/* Spin button */}
+        <button
+          onClick={handleSpin}
+          disabled={spinning}
+          style={{
+            background: spinning ? 'rgba(255,255,255,0.04)' : '#CC2200',
+            color: '#fff',
+            fontFamily: 'Orbitron, sans-serif',
+            fontWeight: 700,
+            fontSize: 15,
+            padding: '14px 0',
+            borderRadius: 11,
+            width: '100%',
+            border: spinning ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
+            letterSpacing: 2,
+          }}
+          onMouseEnter={e => { if (!spinning) e.currentTarget.style.boxShadow = '0 4px 24px rgba(204,34,0,0.5)' }}
+          onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+        >
+          {spinning ? '⏳ GIRANDO...' : '🎰 GIRAR'}
         </button>
 
         {message && (
-          <div style={{ color: msgColor, fontWeight: 'bold', fontSize: 16, textAlign: 'center', background: '#111', padding: '10px 20px', borderRadius: 8 }}>
+          <div style={{
+            color: msgColor,
+            background: isWin ? 'rgba(0,230,118,0.08)' : 'rgba(255,82,82,0.08)',
+            border: `1px solid ${isWin ? 'rgba(0,230,118,0.25)' : 'rgba(255,82,82,0.25)'}`,
+            borderRadius: 10,
+            fontWeight: 700,
+            fontSize: 15,
+            textAlign: 'center',
+            padding: '12px 20px',
+            width: '100%',
+          }}>
             {message}
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 20, color: '#888', fontSize: 13 }}>
-          <span>Rodadas: {rounds}</span><span>Vitórias: {wins}</span><span>Taxa: {winRate}%</span>
-        </div>
-
-        <div style={{ background: '#111', borderRadius: 8, padding: '12px 20px', width: '100%', maxWidth: 320 }}>
-          <p style={{ color: '#FFD700', fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>Tabela de Pagamentos</p>
+        {/* Payout table */}
+        <div className="glass" style={{ padding: '14px 20px', width: '100%' }}>
+          <p style={{ color: '#FFD700', fontFamily: 'Orbitron, sans-serif', fontSize: 11, letterSpacing: 1.5, marginBottom: 10, textAlign: 'center' }}>
+            PAGAMENTOS
+          </p>
           {SYMBOLS.map(s => (
-            <div key={s.icon} style={{ display: 'flex', justifyContent: 'space-between', color: '#ccc', fontSize: 13, marginBottom: 4 }}>
-              <span>{s.icon} {s.icon} {s.icon}</span><span style={{ color: '#00FF00' }}>{s.mult}×</span>
+            <div key={s.icon} style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: 13, marginBottom: 5 }}>
+              <span style={{ fontSize: 18 }}>{s.icon} {s.icon} {s.icon}</span>
+              <span style={{ color: '#FFD700', fontFamily: 'Orbitron, sans-serif', fontWeight: 700 }}>{s.mult}×</span>
             </div>
           ))}
+        </div>
+
+        <div className="stats-bar">
+          <div className="stat-item"><span className="stat-label">RODADAS</span><span className="stat-value">{rounds}</span></div>
+          <div className="stat-item"><span className="stat-label">VITÓRIAS</span><span className="stat-value">{wins}</span></div>
+          <div className="stat-item"><span className="stat-label">TAXA</span><span className="stat-value">{winRate}%</span></div>
         </div>
       </div>
     </GameShell>

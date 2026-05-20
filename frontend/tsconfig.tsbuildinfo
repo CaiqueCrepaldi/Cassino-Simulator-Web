@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/api/client.ts","./src/components/menu.tsx","./src/games/aviator.tsx","./src/games/baccarat.tsx","./src/games/blackjack.tsx","./src/games/coinflip.tsx","./src/games/crashdice.tsx","./src/games/double.tsx","./src/games/gameshell.tsx","./src/games/roulette.tsx","./src/games/slotmachine.tsx"],"version":"5.9.3"}
