@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { GameProps } from '../types'
 import GameShell from './GameShell'
+import { api } from '../api/client'
 
 // European roulette pockets 0-36
 const RED_NUMBERS = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36])
@@ -13,24 +14,6 @@ function pocketColor(n: number): string {
 
 type BetType = 'number' | 'red' | 'black' | 'even' | 'odd' | 'low' | 'high' | 'dozen1' | 'dozen2' | 'dozen3' | 'col1' | 'col2' | 'col3'
 interface Bet { type: BetType; value?: number; amount: number }
-
-function betPayout(bet: Bet, result: number): number {
-  const { type, value, amount } = bet
-  if (type === 'number' && value === result) return amount * 36
-  if (type === 'red'    && RED_NUMBERS.has(result) && result !== 0) return amount * 2
-  if (type === 'black'  && !RED_NUMBERS.has(result) && result !== 0) return amount * 2
-  if (type === 'even'   && result !== 0 && result % 2 === 0) return amount * 2
-  if (type === 'odd'    && result % 2 === 1) return amount * 2
-  if (type === 'low'    && result >= 1 && result <= 18) return amount * 2
-  if (type === 'high'   && result >= 19 && result <= 36) return amount * 2
-  if (type === 'dozen1' && result >= 1 && result <= 12) return amount * 3
-  if (type === 'dozen2' && result >= 13 && result <= 24) return amount * 3
-  if (type === 'dozen3' && result >= 25 && result <= 36) return amount * 3
-  if (type === 'col1'   && result !== 0 && result % 3 === 1) return amount * 3
-  if (type === 'col2'   && result !== 0 && result % 3 === 2) return amount * 3
-  if (type === 'col3'   && result !== 0 && result % 3 === 0) return amount * 3
-  return 0
-}
 
 const BET_BUTTONS: { label: string; type: BetType; color?: string }[] = [
   { label: '🔴 Vermelho', type: 'red',    color: '#880000' },
@@ -80,20 +63,28 @@ export default function Roulette({ balance, onBalanceChange, onBack }: GameProps
 
   const totalBet = bets.reduce((s, b) => s + b.amount, 0)
 
-  function handleSpin() {
+  async function handleSpin() {
     if (bets.length === 0) { setMessage('Adicione apostas primeiro!'); setMsgColor('#FF4444'); return }
     if (totalBet > balance) { setMessage('Saldo insuficiente!'); setMsgColor('#FF4444'); return }
     if (spinning) return
 
-    onBalanceChange(balance - totalBet)
     setSpinning(true)
     setResult(null)
     setMessage('')
 
-    const targetIdx = Math.floor(Math.random() * WHEEL_ORDER.length)
-    const targetNum = WHEEL_ORDER[targetIdx]
+    let apiRes: { number: number; totalWin: number; balance: number }
+    try {
+      apiRes = await api.roulette.spin(bets)
+    } catch (err: unknown) {
+      setSpinning(false)
+      setMessage(err instanceof Error ? err.message : 'Erro na conexão')
+      setMsgColor('#FF4444')
+      return
+    }
 
-    // scroll strip so targetIdx pocket lands at center
+    const targetNum = apiRes.number
+    const targetIdx = WHEEL_ORDER.indexOf(targetNum)
+
     const centerOffset = targetIdx * POCKET_W
     const extraRevs    = STRIP_W * (4 + Math.floor(Math.random() * 3))
     const finalOffset  = centerOffset + extraRevs
@@ -113,12 +104,11 @@ export default function Roulette({ balance, onBalanceChange, onBack }: GameProps
         setResult(targetNum)
         setSpinning(false)
         setRounds(r => r + 1)
+        onBalanceChange(apiRes.balance)
 
-        const totalWin = bets.reduce((s, b) => s + betPayout(b, targetNum), 0)
-        if (totalWin > 0) {
-          onBalanceChange(balance - totalBet + totalWin)
+        if (apiRes.totalWin > 0) {
           setWins(w => w + 1)
-          setMessage(`🎉 Número ${targetNum}! — Ganhou R$ ${totalWin.toFixed(2)}!`)
+          setMessage(`🎉 Número ${targetNum}! — Ganhou R$ ${apiRes.totalWin.toFixed(2)}!`)
           setMsgColor('#00FF00')
         } else {
           setMessage(`❌ Número ${targetNum} — Perdeu R$ ${totalBet.toFixed(2)}!`)

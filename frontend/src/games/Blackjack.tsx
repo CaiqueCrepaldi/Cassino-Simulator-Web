@@ -1,28 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import type { GameProps } from '../types'
 import GameShell from './GameShell'
+import { api } from '../api/client'
 
 type Suit = '♠' | '♥' | '♦' | '♣'
 type Rank = 'A' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K'
 interface Card { rank: Rank; suit: Suit }
-
-const SUITS: Suit[] = ['♠', '♥', '♦', '♣']
-const RANKS: Rank[] = ['A','2','3','4','5','6','7','8','9','10','J','Q','K']
-
-function buildDeck(): Card[] {
-  const deck: Card[] = []
-  for (const suit of SUITS) for (const rank of RANKS) deck.push({ rank, suit })
-  return deck
-}
-
-function shuffle(deck: Card[]): Card[] {
-  const d = [...deck]
-  for (let i = d.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [d[i], d[j]] = [d[j], d[i]]
-  }
-  return d
-}
 
 function cardValue(rank: Rank): number {
   if (['J', 'Q', 'K'].includes(rank)) return 10
@@ -35,10 +18,6 @@ function handScore(hand: Card[]): number {
   let aces  = hand.filter(c => c.rank === 'A').length
   while (score > 21 && aces > 0) { score -= 10; aces-- }
   return score
-}
-
-function isBlackjack(hand: Card[]): boolean {
-  return hand.length === 2 && handScore(hand) === 21
 }
 
 function isRed(suit: Suit): boolean { return suit === '♥' || suit === '♦' }
@@ -59,119 +38,91 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
 
   const betVal = parseFloat(bet) || 0
 
-  const newDeck = useCallback(() => shuffle(buildDeck()), [])
-
-  function deal() {
+  async function deal() {
     if (betVal <= 0 || betVal > balance) { setMessage('Aposta inválida!'); setMsgColor('#FF4444'); return }
-    const d = newDeck()
-    const p = [d[0], d[2]]
-    const dl = [d[1], d[3]]
-    const rest = d.slice(4)
-    setDeck(rest)
-    setPlayerHand(p)
-    setDealerHand(dl)
-    setShowDealer(false)
-    setMessage('')
-    setPhase('playing')
-    onBalanceChange(balance - betVal)
+    try {
+      const res = await api.blackjack.deal(betVal) as Record<string, unknown>
+      setShowDealer(false)
+      setMessage('')
+      onBalanceChange(res.balance as number)
 
-    if (isBlackjack(p)) {
-      setTimeout(() => finish(p, dl, rest, true), 400)
+      if (res.outcome === 'blackjack') {
+        setPlayerHand(res.playerHand as Card[])
+        setDealerHand(res.dealerHand as Card[])
+        setDeck([])
+        setShowDealer(true)
+        setPhase('done')
+        setRounds(r => r + 1)
+        setWins(w => w + 1)
+        setMessage(`🎉 BLACKJACK! Ganhou R$ ${(res.prize as number).toFixed(2)}!`)
+        setMsgColor('#FFD700')
+      } else {
+        setPlayerHand(res.playerHand as Card[])
+        setDealerHand(res.dealerHand as Card[])
+        setDeck(res.deck as Card[])
+        setPhase('playing')
+      }
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : 'Erro na conexão')
+      setMsgColor('#FF4444')
     }
   }
 
-  function hit() {
+  async function hit() {
     if (phase !== 'playing') return
-    const card = deck[0]
-    const rest  = deck.slice(1)
-    const hand  = [...playerHand, card]
-    setDeck(rest)
-    setPlayerHand(hand)
-    if (handScore(hand) > 21) {
-      finishAfterBust(hand, dealerHand, rest)
+    try {
+      const res = await api.blackjack.hit(playerHand, deck) as Record<string, unknown>
+      const newHand = res.playerHand as Card[]
+      setPlayerHand(newHand)
+      setDeck(res.deck as Card[])
+      if (res.bust) {
+        setShowDealer(true)
+        setPhase('done')
+        setRounds(r => r + 1)
+        setMessage(`💥 Estourou! (${res.playerScore}) — Perdeu!`)
+        setMsgColor('#FF4444')
+      }
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : 'Erro na conexão')
+      setMsgColor('#FF4444')
     }
   }
 
-  function stand() {
+  async function stand(doubled = false) {
     if (phase !== 'playing') return
-    finish(playerHand, dealerHand, deck, false)
+    try {
+      const res = await api.blackjack.stand(betVal, playerHand, dealerHand, deck, doubled) as Record<string, unknown>
+      setDealerHand(res.dealerHand as Card[])
+      setShowDealer(true)
+      setPhase('done')
+      setRounds(r => r + 1)
+      onBalanceChange(res.balance as number)
+
+      const outcome = res.outcome as string
+      const ps = res.playerScore as number
+      const ds = res.dealerScore as number
+
+      if (outcome === 'player_wins' || outcome === 'dealer_bust') {
+        setWins(w => w + 1)
+        setMessage(`🎉 Você ganhou! (${ps} vs ${ds}) — R$ ${(res.prize as number).toFixed(2)}!`)
+        setMsgColor('#00FF00')
+      } else if (outcome === 'push') {
+        setMessage(`🤝 Empate! (${ps} vs ${ds}) — Devolvido!`)
+        setMsgColor('#FFD700')
+      } else {
+        setMessage(`❌ Dealer ganhou! (${ds} vs ${ps}) — Perdeu!`)
+        setMsgColor('#FF4444')
+      }
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : 'Erro na conexão')
+      setMsgColor('#FF4444')
+    }
   }
 
-  function doubleDown() {
+  async function doubleDown() {
     if (phase !== 'playing' || playerHand.length !== 2) return
     if (betVal > balance) { setMessage('Saldo insuficiente para dobrar!'); setMsgColor('#FF4444'); return }
-    onBalanceChange(balance - betVal) // extra bet deducted
-    const card = deck[0]
-    const rest  = deck.slice(1)
-    const hand  = [...playerHand, card]
-    setDeck(rest)
-    setPlayerHand(hand)
-    if (handScore(hand) > 21) {
-      finishAfterBust(hand, dealerHand, rest, true)
-    } else {
-      finish(hand, dealerHand, rest, false, true)
-    }
-  }
-
-  function finishAfterBust(pHand: Card[], dHand: Card[], _rest: Card[], doubled = false) {
-    setShowDealer(true)
-    setPhase('done')
-    setRounds(r => r + 1)
-    setMessage(`💥 Estourou! (${handScore(pHand)}) — Perdeu R$ ${(betVal * (doubled ? 2 : 1)).toFixed(2)}!`)
-    setMsgColor('#FF4444')
-    void dHand
-  }
-
-  function finish(pHand: Card[], dHand: Card[], deckLeft: Card[], playerBJ = false, doubled = false) {
-    let dl = [...dHand]
-    let dk = [...deckLeft]
-
-    if (!playerBJ) {
-      while (handScore(dl) < 17) {
-        dl = [...dl, dk[0]]
-        dk = dk.slice(1)
-      }
-    }
-
-    setDealerHand(dl)
-    setDeck(dk)
-    setShowDealer(true)
-    setPhase('done')
-    setRounds(r => r + 1)
-
-    const ps = handScore(pHand)
-    const ds = handScore(dl)
-    const mult = doubled ? 2 : 1
-
-    if (playerBJ && !isBlackjack(dl)) {
-      const prize = betVal * 2.5
-      onBalanceChange(balance - betVal + prize)
-      setWins(w => w + 1)
-      setMessage(`🎉 BLACKJACK! Ganhou R$ ${prize.toFixed(2)}!`)
-      setMsgColor('#FFD700')
-    } else if (ps > 21) {
-      setMessage(`💥 Estourou! (${ps}) — Perdeu!`)
-      setMsgColor('#FF4444')
-    } else if (ds > 21) {
-      const prize = betVal * 2 * mult
-      onBalanceChange(balance - betVal * mult + prize)
-      setWins(w => w + 1)
-      setMessage(`🎉 Dealer estourou! Ganhou R$ ${prize.toFixed(2)}!`)
-      setMsgColor('#00FF00')
-    } else if (ps > ds) {
-      const prize = betVal * 2 * mult
-      onBalanceChange(balance - betVal * mult + prize)
-      setWins(w => w + 1)
-      setMessage(`🎉 Você ganhou! (${ps} vs ${ds}) — R$ ${prize.toFixed(2)}!`)
-      setMsgColor('#00FF00')
-    } else if (ps === ds) {
-      onBalanceChange(balance - betVal * mult + betVal * mult)
-      setMessage(`🤝 Empate! (${ps} vs ${ds}) — Devolvido!`)
-      setMsgColor('#FFD700')
-    } else {
-      setMessage(`❌ Dealer ganhou! (${ds} vs ${ps}) — Perdeu!`)
-      setMsgColor('#FF4444')
-    }
+    await stand(true)
   }
 
   const winRate = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
@@ -225,7 +176,7 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
               onMouseLeave={e => (e.currentTarget.style.background = '#004488')}>
               ➕ HIT
             </button>
-            <button onClick={stand}
+            <button onClick={() => stand(false)}
               style={{ flex: 1, background: '#880000', color: '#fff', fontWeight: 'bold', fontSize: 15, padding: '12px 0', borderRadius: 8 }}
               onMouseEnter={e => (e.currentTarget.style.background = '#660000')}
               onMouseLeave={e => (e.currentTarget.style.background = '#880000')}>

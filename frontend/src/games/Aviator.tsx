@@ -1,11 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { GameProps } from '../types'
 import GameShell from './GameShell'
-
-function generateCrash(): number {
-  const u = Math.random()
-  return Math.max(1.0, 0.99 / (1 - u * 0.99))
-}
+import { api } from '../api/client'
 
 const MAX_HISTORY = 8
 
@@ -33,56 +29,61 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
 
   useEffect(() => () => stop(), [stop])
 
-  function handleStart() {
+  async function handleStart() {
     const betVal = parseFloat(bet) || 0
     if (betVal <= 0 || betVal > balance) { setMessage('Aposta inválida!'); setMsgColor('#FF4444'); return }
 
-    onBalanceChange(balance - betVal)
-    phasedBet.current = betVal
-    setCashedOut(false)
-    setMessage('')
-    setPhase('flying')
+    try {
+      const { crashAt, balance: newBal } = await api.aviator.generate(betVal)
+      onBalanceChange(newBal)
+      phasedBet.current = betVal
+      setCashedOut(false)
+      setMessage('')
+      setPhase('flying')
+      crashRef.current = crashAt
+      multRef.current  = 1.0
+      setMultiplier(1.0)
 
-    const crashAt = generateCrash()
-    crashRef.current = crashAt
-    multRef.current  = 1.0
-    setMultiplier(1.0)
+      const autoVal = parseFloat(autoCashout)
 
-    const autoVal = parseFloat(autoCashout)
+      timerRef.current = setInterval(() => {
+        multRef.current = parseFloat((multRef.current * 1.015).toFixed(2))
+        setMultiplier(multRef.current)
 
-    timerRef.current = setInterval(() => {
-      multRef.current = parseFloat((multRef.current * 1.015).toFixed(2))
-      setMultiplier(multRef.current)
+        if (!isNaN(autoVal) && autoVal > 1 && multRef.current >= autoVal) {
+          doWin(phasedBet.current, multRef.current)
+          return
+        }
 
-      // auto cash-out
-      if (!isNaN(autoVal) && autoVal > 1 && multRef.current >= autoVal) {
-        doWin(phasedBet.current, multRef.current)
-        return
-      }
-
-      if (multRef.current >= crashRef.current) {
-        stop()
-        setPhase('crashed')
-        setRounds(r => r + 1)
-        setHistory(h => [crashRef.current, ...h].slice(0, MAX_HISTORY))
-        setMessage(`💥 Avião caiu em ${crashRef.current.toFixed(2)}×`)
-        setMsgColor('#FF4444')
-      }
-    }, 100)
+        if (multRef.current >= crashRef.current) {
+          stop()
+          setPhase('crashed')
+          setRounds(r => r + 1)
+          setHistory(h => [crashRef.current, ...h].slice(0, MAX_HISTORY))
+          setMessage(`💥 Avião caiu em ${crashRef.current.toFixed(2)}×`)
+          setMsgColor('#FF4444')
+        }
+      }, 100)
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : 'Erro na conexão')
+      setMsgColor('#FF4444')
+    }
   }
 
   function doWin(betVal: number, mult: number) {
     stop()
-    const prize = betVal * mult
-    onBalanceChange(balance - betVal + prize)
     setCashedOut(true)
     setPhase('crashed')
     setRounds(r => r + 1)
     setWins(w => w + 1)
     if (mult > bestMult) setBestMult(mult)
     setHistory(h => [crashRef.current, ...h].slice(0, MAX_HISTORY))
-    setMessage(`✅ Retirou em ${mult.toFixed(2)}× — Ganhou R$ ${prize.toFixed(2)}!`)
-    setMsgColor('#00FF00')
+
+    api.aviator.settle(betVal, crashRef.current, mult).then(r => {
+      onBalanceChange(r.balance)
+      setMessage(`✅ Retirou em ${mult.toFixed(2)}× — Ganhou R$ ${r.prize.toFixed(2)}!`)
+      setMsgColor('#00FF00')
+    }).catch(() => {})
   }
 
   function handleCashout() {

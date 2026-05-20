@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { GameProps } from '../types'
 import GameShell from './GameShell'
+import { api } from '../api/client'
 
 // 14 segments: 7 black, 6 red, 1 white
 const SEGMENTS: { label: string; color: string; mult: number }[] = [
@@ -111,19 +112,27 @@ export default function Double({ balance, onBalanceChange, onBack }: GameProps) 
     ctx.fill()
   }
 
-  function handleSpin() {
+  async function handleSpin() {
     const betVal = parseFloat(bet) || 0
     if (betVal <= 0 || betVal > balance) { setMessage('Aposta inválida!'); setMsgColor('#FF4444'); return }
     if (spinning) return
 
-    onBalanceChange(balance - betVal)
     setSpinning(true)
     setResult(null)
     setMessage('')
 
-    const targetSeg = Math.floor(Math.random() * N)
+    let apiResult: { segmentIndex: number; type: string; win: boolean; prize: number; multiplier: number; balance: number }
+    try {
+      apiResult = await api.double.spin(betVal, chosen)
+    } catch (err: unknown) {
+      setSpinning(false)
+      setMessage(err instanceof Error ? err.message : 'Erro na conexão')
+      setMsgColor('#FF4444')
+      return
+    }
+
+    const targetSeg = apiResult.segmentIndex
     const segAngle  = 360 / N
-    // we want targetSeg pointing to top (pointer). Wheel angle needs: (0 - targetSeg * segAngle) mod 360
     const baseAngle = ((-targetSeg * segAngle) % 360 + 360) % 360
     const finalAngle = baseAngle + 360 * (5 + Math.floor(Math.random() * 5))
 
@@ -143,16 +152,14 @@ export default function Double({ balance, onBalanceChange, onBack }: GameProps) 
         setResult(targetSeg)
         setSpinning(false)
         setRounds(r => r + 1)
+        onBalanceChange(apiResult.balance)
 
         const type = segType(targetSeg)
         setHistory(h => [type, ...h].slice(0, MAX_HISTORY))
 
-        if (type === chosen) {
-          const mult = SEGMENTS[targetSeg].mult
-          const prize = betVal * mult
-          onBalanceChange(balance - betVal + prize)
+        if (apiResult.win) {
           setWins(w => w + 1)
-          setMessage(`🎉 ${SEGMENTS[targetSeg].label} — Ganhou R$ ${prize.toFixed(2)}! (${mult}×)`)
+          setMessage(`🎉 ${SEGMENTS[targetSeg].label} — Ganhou R$ ${apiResult.prize.toFixed(2)}! (${apiResult.multiplier}×)`)
           setMsgColor('#00FF00')
         } else {
           setMessage(`❌ ${SEGMENTS[targetSeg].label} — Perdeu!`)

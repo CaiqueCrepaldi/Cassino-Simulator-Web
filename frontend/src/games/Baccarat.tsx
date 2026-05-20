@@ -1,35 +1,12 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import type { GameProps } from '../types'
 import GameShell from './GameShell'
+import { api } from '../api/client'
 
 type Suit = '♠' | '♥' | '♦' | '♣'
 type Rank = 'A' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K'
 interface Card { rank: Rank; suit: Suit }
 
-const SUITS: Suit[] = ['♠', '♥', '♦', '♣']
-const RANKS: Rank[] = ['A','2','3','4','5','6','7','8','9','10','J','Q','K']
-
-function buildDeck(): Card[] {
-  const d: Card[] = []
-  for (const s of SUITS) for (const r of RANKS) d.push({ rank: r, suit: s })
-  return d
-}
-function shuffle(d: Card[]): Card[] {
-  const a = [...d]
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]]
-  }
-  return a
-}
-function cardVal(r: Rank): number {
-  if (r === 'A') return 1
-  if (['10','J','Q','K'].includes(r)) return 0
-  return parseInt(r)
-}
-function handScore(h: Card[]): number {
-  return h.reduce((s, c) => s + cardVal(c.rank), 0) % 10
-}
 function isRed(s: Suit) { return s === '♥' || s === '♦' }
 
 type BetSide = 'player' | 'banker' | 'tie'
@@ -45,76 +22,38 @@ export default function Baccarat({ balance, onBalanceChange, onBack }: GameProps
   const [rounds, setRounds] = useState(0)
   const [wins, setWins] = useState(0)
 
-  const newDeck = useCallback(() => shuffle(buildDeck()), [])
-
-  function deal() {
+  async function deal() {
     const betVal = parseFloat(bet) || 0
     if (betVal <= 0 || betVal > balance) { setMessage('Aposta inválida!'); setMsgColor('#FF4444'); return }
-    onBalanceChange(balance - betVal)
     setMessage('')
     setPhase('dealing')
 
-    const d = newDeck()
-    let i = 0
-    const p: Card[] = [d[i++], d[i++]]
-    const b: Card[] = [d[i++], d[i++]]
+    try {
+      const res = await api.baccarat.deal(betVal, chosen) as Record<string, unknown>
+      setPlayerCards(res.playerCards as Card[])
+      setBankerCards(res.bankerCards as Card[])
+      setPhase('done')
+      setRounds(r => r + 1)
+      onBalanceChange(res.balance as number)
 
-    const ps = handScore(p)
-    const bs = handScore(b)
+      const ps = res.playerScore as number
+      const bs = res.bankerScore as number
+      const winner = res.winner as BetSide
 
-    // Natural — no more cards
-    if (ps >= 8 || bs >= 8) {
-      resolve(p, b, betVal)
-      return
-    }
-
-    // Player draws on 0-5
-    if (ps <= 5) { p.push(d[i++]) }
-
-    // Banker drawing rules
-    const p3 = p.length === 3 ? cardVal(p[2].rank) : -1
-    const bsCur = handScore(b)
-    let bankerDraws = false
-    if (p.length === 2) {
-      bankerDraws = bsCur <= 5
-    } else {
-      if (bsCur <= 2) bankerDraws = true
-      else if (bsCur === 3) bankerDraws = p3 !== 8
-      else if (bsCur === 4) bankerDraws = p3 >= 2 && p3 <= 7
-      else if (bsCur === 5) bankerDraws = p3 >= 4 && p3 <= 7
-      else if (bsCur === 6) bankerDraws = p3 === 6 || p3 === 7
-    }
-    if (bankerDraws) b.push(d[i++])
-
-    resolve(p, b, betVal)
-  }
-
-  function resolve(p: Card[], b: Card[], betVal: number) {
-    setPlayerCards(p)
-    setBankerCards(b)
-    setPhase('done')
-    setRounds(r => r + 1)
-
-    const ps = handScore(p)
-    const bs = handScore(b)
-    const winner: BetSide = ps > bs ? 'player' : bs > ps ? 'banker' : 'tie'
-
-    let prize = 0
-    if (winner === chosen) {
-      if (chosen === 'player') prize = betVal * 2
-      else if (chosen === 'banker') prize = betVal + betVal * 0.95
-      else prize = betVal * 9
-      onBalanceChange(balance - betVal + prize)
-      setWins(w => w + 1)
-      setMessage(`🎉 ${winner === 'player' ? 'Jogador' : winner === 'banker' ? 'Banca' : 'Empate'} venceu! (${ps} vs ${bs}) — Ganhou R$ ${prize.toFixed(2)}!`)
-      setMsgColor('#00FF00')
-    } else if (winner === 'tie' && chosen !== 'tie') {
-      // tie returns bet for player/banker bets
-      onBalanceChange(balance - betVal + betVal)
-      setMessage(`🤝 Empate! (${ps} vs ${bs}) — Aposta devolvida!`)
-      setMsgColor('#FFD700')
-    } else {
-      setMessage(`❌ ${winner === 'player' ? 'Jogador' : 'Banca'} venceu! (${ps} vs ${bs}) — Perdeu!`)
+      if (winner === chosen) {
+        setWins(w => w + 1)
+        setMessage(`🎉 ${winner === 'player' ? 'Jogador' : winner === 'banker' ? 'Banca' : 'Empate'} venceu! (${ps} vs ${bs}) — Ganhou R$ ${(res.prize as number).toFixed(2)}!`)
+        setMsgColor('#00FF00')
+      } else if (winner === 'tie' && chosen !== 'tie') {
+        setMessage(`🤝 Empate! (${ps} vs ${bs}) — Aposta devolvida!`)
+        setMsgColor('#FFD700')
+      } else {
+        setMessage(`❌ ${winner === 'player' ? 'Jogador' : 'Banca'} venceu! (${ps} vs ${bs}) — Perdeu!`)
+        setMsgColor('#FF4444')
+      }
+    } catch (err: unknown) {
+      setPhase('idle')
+      setMessage(err instanceof Error ? err.message : 'Erro na conexão')
       setMsgColor('#FF4444')
     }
   }
@@ -136,7 +75,7 @@ export default function Baccarat({ balance, onBalanceChange, onBack }: GameProps
           {[{ label: 'Jogador', cards: playerCards }, { label: 'Banca', cards: bankerCards }].map(side => (
             <div key={side.label}>
               <p style={{ color: '#aaa', fontSize: 13, marginBottom: 6 }}>
-                {side.label} {side.cards.length > 0 ? `(${handScore(side.cards)})` : ''}
+                {side.label}
               </p>
               <div style={{ display: 'flex', gap: 6, minHeight: 86 }}>
                 {side.cards.map((c, i) => <BaccaratCard key={i} card={c} />)}

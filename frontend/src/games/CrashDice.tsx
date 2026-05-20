@@ -1,28 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { GameProps } from '../types'
 import GameShell from './GameShell'
+import { api } from '../api/client'
 
 const FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅']
 
 function rollDie() { return Math.floor(Math.random() * 6) + 1 }
 
 type Result = { d1: number; d2: number }
-
-function calcWin(numbers: number[], d1: number, d2: number, betVal: number): { prize: number; desc: string } | null {
-  for (const n of numbers) {
-    // Exact doubles
-    if (d1 === d2 && d1 === n) return { prize: betVal * 5, desc: `Duplo ${n}! (5×)` }
-  }
-  for (const n of numbers) {
-    // Sum match
-    if (d1 + d2 === n) return { prize: betVal * 3, desc: `Soma ${d1 + d2}! (3×)` }
-  }
-  for (const n of numbers) {
-    // One die match
-    if (d1 === n || d2 === n) return { prize: betVal * 2, desc: `Um dado = ${n}! (2×)` }
-  }
-  return null
-}
 
 export default function CrashDice({ balance, onBalanceChange, onBack }: GameProps) {
   const [bet, setBet] = useState('10')
@@ -45,42 +30,41 @@ export default function CrashDice({ balance, onBalanceChange, onBack }: GameProp
     )
   }
 
-  function handleRoll() {
+  async function handleRoll() {
     const betVal = parseFloat(bet) || 0
     if (betVal <= 0 || betVal > balance) { setMessage('Aposta inválida!'); setMsgColor('#FF4444'); return }
     if (selected.length === 0) { setMessage('Escolha pelo menos 1 número!'); setMsgColor('#FF4444'); return }
     if (rolling) return
 
-    onBalanceChange(balance - betVal)
     setRolling(true)
     setFinalDice(null)
     setMessage('')
 
-    let ticks = 0
-    const total = 18
-    timerRef.current = setInterval(() => {
-      setDice({ d1: rollDie(), d2: rollDie() })
-      ticks++
-      if (ticks >= total) {
-        stop()
-        const d1 = rollDie(), d2 = rollDie()
-        setDice({ d1, d2 })
-        setFinalDice({ d1, d2 })
-        setRolling(false)
-        setRounds(r => r + 1)
+    timerRef.current = setInterval(() => setDice({ d1: rollDie(), d2: rollDie() }), 80)
 
-        const win = calcWin(selected, d1, d2, betVal)
-        if (win) {
-          onBalanceChange(balance - betVal + win.prize)
-          setWins(w => w + 1)
-          setMessage(`🎉 ${win.desc} — Ganhou R$ ${win.prize.toFixed(2)}!`)
-          setMsgColor('#00FF00')
-        } else {
-          setMessage(`❌ Dados: ${d1} e ${d2} — Perdeu!`)
-          setMsgColor('#FF4444')
-        }
+    try {
+      const result = await api.crashDice.roll(betVal, selected)
+      stop()
+      setDice({ d1: result.d1, d2: result.d2 })
+      setFinalDice({ d1: result.d1, d2: result.d2 })
+      setRolling(false)
+      setRounds(r => r + 1)
+      onBalanceChange(result.balance)
+
+      if (result.win) {
+        setWins(w => w + 1)
+        setMessage(`🎉 ${result.reason} — Ganhou R$ ${result.prize.toFixed(2)}!`)
+        setMsgColor('#00FF00')
+      } else {
+        setMessage(`❌ Dados: ${result.d1} e ${result.d2} — Perdeu!`)
+        setMsgColor('#FF4444')
       }
-    }, 80)
+    } catch (err: unknown) {
+      stop()
+      setRolling(false)
+      setMessage(err instanceof Error ? err.message : 'Erro na conexão')
+      setMsgColor('#FF4444')
+    }
   }
 
   const winRate = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'

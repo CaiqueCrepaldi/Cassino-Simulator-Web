@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { GameProps } from '../types'
 import GameShell from './GameShell'
+import { api } from '../api/client'
 
 type Side = 'heads' | 'tails'
 const LAST_N = 12
@@ -28,7 +29,7 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
   const stopAuto = useCallback(() => { if (autoTimerRef.current) { clearInterval(autoTimerRef.current); autoTimerRef.current = null } }, [])
   useEffect(() => () => { stop(); stopAuto() }, [stop, stopAuto])
 
-  function doFlip(currentChosen: Side) {
+  async function doFlip(currentChosen: Side) {
     const betVal = parseFloat(bet) || 0
     if (betVal <= 0 || betVal > balanceRef.current) {
       setMessage('Aposta inválida ou saldo insuficiente!')
@@ -38,39 +39,38 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
       return
     }
 
-    onBalanceChange(balanceRef.current - betVal)
     setFlipping(true)
     setMessage('')
+    timerRef.current = setInterval(() => setFace(Math.random() < 0.5 ? 'heads' : 'tails'), 60)
 
-    let ticks = 0
-    const total = 10
-    timerRef.current = setInterval(() => {
-      setFace(Math.random() < 0.5 ? 'heads' : 'tails')
-      ticks++
-      if (ticks >= total) {
-        stop()
-        const result: Side = Math.random() < 0.5 ? 'heads' : 'tails'
-        setFace(result)
-        setFlipping(false)
-        setRounds(r => r + 1)
-        setHistory(h => [result, ...h].slice(0, LAST_N))
+    try {
+      const res = await api.coinFlip.flip(betVal, currentChosen)
+      stop()
+      const result = res.result as Side
+      setFace(result)
+      setFlipping(false)
+      setRounds(r => r + 1)
+      setHistory(h => [result, ...h].slice(0, LAST_N))
+      onBalanceChange(res.balance)
 
-        if (result === currentChosen) {
-          const prize = betVal * 2
-          onBalanceChange(balanceRef.current - betVal + prize)
-          setWins(w => w + 1)
-          setMessage(`🎉 ${result === 'heads' ? '🪙 Cara' : '👑 Coroa'}! Ganhou R$ ${prize.toFixed(2)}!`)
-          setMsgColor('#00FF00')
-          setStreak(s => streakType === 'win' ? s + 1 : 1)
-          setStreakType('win')
-        } else {
-          setMessage(`❌ ${result === 'heads' ? '🪙 Cara' : '👑 Coroa'}! Perdeu!`)
-          setMsgColor('#FF4444')
-          setStreak(s => streakType === 'loss' ? s + 1 : 1)
-          setStreakType('loss')
-        }
+      if (res.win) {
+        setWins(w => w + 1)
+        setMessage(`🎉 ${result === 'heads' ? '🪙 Cara' : '👑 Coroa'}! Ganhou R$ ${res.prize.toFixed(2)}!`)
+        setMsgColor('#00FF00')
+        setStreak(s => streakType === 'win' ? s + 1 : 1)
+        setStreakType('win')
+      } else {
+        setMessage(`❌ ${result === 'heads' ? '🪙 Cara' : '👑 Coroa'}! Perdeu!`)
+        setMsgColor('#FF4444')
+        setStreak(s => streakType === 'loss' ? s + 1 : 1)
+        setStreakType('loss')
       }
-    }, 60)
+    } catch (err: unknown) {
+      stop()
+      setFlipping(false)
+      setMessage(err instanceof Error ? err.message : 'Erro na conexão')
+      setMsgColor('#FF4444')
+    }
   }
 
   function handleFlip() {
