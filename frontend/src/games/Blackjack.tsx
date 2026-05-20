@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import type { GameProps } from '../types'
 import GameShell from './GameShell'
 import { api } from '../api/client'
@@ -138,7 +138,7 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
           </p>
           <div style={{ display: 'flex', gap: 8, minHeight: 92, flexWrap: 'wrap' }}>
             {dealerHand.map((c, i) => (
-              <CardDisplay key={i} card={i === 1 && !showDealer ? null : c} />
+              <CardDisplay key={i} card={i === 1 && !showDealer ? null : c} index={i} />
             ))}
           </div>
         </div>
@@ -149,7 +149,7 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
             VOCÊ {playerHand.length > 0 ? `— ${handScore(playerHand)}` : ''}
           </p>
           <div style={{ display: 'flex', gap: 8, minHeight: 92, flexWrap: 'wrap' }}>
-            {playerHand.map((c, i) => <CardDisplay key={i} card={c} />)}
+            {playerHand.map((c, i) => <CardDisplay key={i} card={c} index={i} />)}
           </div>
         </div>
 
@@ -286,7 +286,11 @@ export default function Blackjack({ balance, onBalanceChange, onBack }: GameProp
   )
 }
 
-function CardDisplay({ card }: { card: Card | null }) {
+function CardDisplay({ card, index = 0 }: { card: Card | null; index?: number }) {
+  const dealStyle: React.CSSProperties = {
+    animation: 'cardDeal 0.32s ease-out both',
+    animationDelay: `${index * 0.07}s`,
+  }
   if (!card) {
     return (
       <div style={{
@@ -297,6 +301,7 @@ function CardDisplay({ card }: { card: Card | null }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 26,
         boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+        ...dealStyle,
       }}>
         🂠
       </div>
@@ -315,6 +320,7 @@ function CardDisplay({ card }: { card: Card | null }) {
       fontWeight: 700,
       userSelect: 'none',
       boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+      ...dealStyle,
     }}>
       <span style={{ fontSize: 18 }}>{card.rank}</span>
       <span style={{ fontSize: 22 }}>{card.suit}</span>

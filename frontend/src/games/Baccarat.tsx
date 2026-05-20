@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import type { GameProps } from '../types'
 import GameShell from './GameShell'
 import { api } from '../api/client'
@@ -82,7 +82,7 @@ export default function Baccarat({ balance, onBalanceChange, onBack }: GameProps
             <div key={side.label} className="glass" style={{ padding: '14px 14px', borderColor: `${side.accent}25` }}>
               <p style={{ color: '#555', fontSize: 10, letterSpacing: 1.5, marginBottom: 10 }}>{side.label}</p>
               <div style={{ display: 'flex', gap: 7, minHeight: 90 }}>
-                {side.cards.map((c, i) => <BaccaratCard key={i} card={c} />)}
+                {side.cards.map((c, i) => <BaccaratCard key={i} card={c} index={i} />)}
               </div>
             </div>
           ))}
@@ -203,8 +203,12 @@ export default function Baccarat({ balance, onBalanceChange, onBack }: GameProps
   )
 }
 
-function BaccaratCard({ card }: { card: Card }) {
+function BaccaratCard({ card, index = 0 }: { card: Card; index?: number }) {
   const red = isRed(card.suit)
+  const dealStyle: React.CSSProperties = {
+    animation: 'cardDeal 0.32s ease-out both',
+    animationDelay: `${index * 0.07}s`,
+  }
   return (
     <div style={{
       width: 56, height: 82,
@@ -217,6 +221,7 @@ function BaccaratCard({ card }: { card: Card }) {
       fontWeight: 700,
       userSelect: 'none',
       boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+      ...dealStyle,
     }}>
       <span style={{ fontSize: 16 }}>{card.rank}</span>
       <span style={{ fontSize: 20 }}>{card.suit}</span>
