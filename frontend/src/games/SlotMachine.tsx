@@ -15,8 +15,13 @@ const POOL = [
   ...Array<number>(25).fill(2),
 ]
 
-function randomReels() {
-  return [0, 1, 2].map(() => POOL[Math.floor(Math.random() * POOL.length)])
+const SYMBOL_H      = 86
+const REEL_PRE      = [12, 16, 20]   // random symbols before result, per reel
+const REEL_DURATION = [1100, 1550, 2000]  // ms per reel, all start simultaneously
+
+function randSym() { return POOL[Math.floor(Math.random() * POOL.length)] }
+function makeStrip(finalSym: number, preCount: number): number[] {
+  return [...Array.from({ length: preCount }, randSym), finalSym]
 }
 
 export default function SlotMachine({ balance, onBalanceChange, onBack }: GameProps) {
@@ -27,10 +32,20 @@ export default function SlotMachine({ balance, onBalanceChange, onBack }: GamePr
   const [msgColor, setMsgColor] = useState('#ffffff')
   const [rounds, setRounds] = useState(0)
   const [wins, setWins] = useState(0)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const betVal = parseFloat(bet) || 0
+  const [reelStrips, setReelStrips]   = useState<number[][]>([[], [], []])
+  const [reelOffsets, setReelOffsets] = useState([0, 0, 0])
+  const [showStrips, setShowStrips]   = useState(false)
+
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const animRef0    = useRef<number | null>(null)
+  const animRef1    = useRef<number | null>(null)
+  const animRef2    = useRef<number | null>(null)
+
+  const betVal  = parseFloat(bet) || 0
   const winRate = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
+  const isWin   = msgColor === '#00e676'
+  const allSame = reels[0] === reels[1] && reels[1] === reels[2]
 
   async function handleSpin() {
     if (spinning) return
@@ -38,34 +53,76 @@ export default function SlotMachine({ balance, onBalanceChange, onBack }: GamePr
 
     setSpinning(true)
     setMessage('')
-    intervalRef.current = setInterval(() => setReels(randomReels()), 60)
+    setShowStrips(false)
+    intervalRef.current = setInterval(() => setReels([randSym(), randSym(), randSym()]), 60)
 
     try {
       const result = await api.slot.spin(betVal)
       clearInterval(intervalRef.current!)
-      setReels(result.reels)
-      setSpinning(false)
-      setRounds(r => r + 1)
-      onBalanceChange(result.balance)
+      intervalRef.current = null
 
-      if (result.win) {
-        const sym = SYMBOLS[result.reels[0]]
-        setWins(w => w + 1)
-        setMessage(`🎉 ${sym.icon}${sym.icon}${sym.icon} — Ganhou R$ ${result.prize.toFixed(2)}! (${result.multiplier}×)`)
-        setMsgColor('#00e676')
-      } else {
-        setMessage('Sem sorte desta vez...')
-        setMsgColor('#ff5252')
+      const strips = result.reels.map((sym: number, i: number) => makeStrip(sym, REEL_PRE[i]))
+      const targets = REEL_PRE.map(n => -n * SYMBOL_H)
+
+      setReelStrips(strips)
+      setReelOffsets([0, 0, 0])
+      setShowStrips(true)
+
+      let doneCount = 0
+      const onReelDone = () => {
+        doneCount++
+        if (doneCount < 3) return
+        setReels(result.reels)
+        setShowStrips(false)
+        setSpinning(false)
+        setRounds(r => r + 1)
+        onBalanceChange(result.balance)
+        if (result.win) {
+          const sym = SYMBOLS[result.reels[0]]
+          setWins(w => w + 1)
+          setMessage(`🎉 ${sym.icon}${sym.icon}${sym.icon} — Ganhou R$ ${result.prize.toFixed(2)}! (${result.multiplier}×)`)
+          setMsgColor('#00e676')
+        } else {
+          setMessage('Sem sorte desta vez...')
+          setMsgColor('#ff5252')
+        }
       }
+
+      setTimeout(() => {
+        const refs = [animRef0, animRef1, animRef2]
+        ;[0, 1, 2].forEach(i => {
+          const startTime = performance.now()
+          const duration  = REEL_DURATION[i]
+          const target    = targets[i]
+
+          function frame(now: number) {
+            const t    = Math.min((now - startTime) / duration, 1)
+            const ease = 1 - Math.pow(1 - t, 4)
+            setReelOffsets(prev => {
+              const next = [...prev]
+              next[i] = target * ease
+              return next
+            })
+            if (t < 1) {
+              refs[i].current = requestAnimationFrame(frame)
+            } else {
+              refs[i].current = null
+              onReelDone()
+            }
+          }
+          refs[i].current = requestAnimationFrame(frame)
+        })
+      }, 0)
+
     } catch (err: unknown) {
       clearInterval(intervalRef.current!)
+      intervalRef.current = null
+      setShowStrips(false)
       setSpinning(false)
       setMessage(err instanceof Error ? err.message : 'Erro na conexão')
       setMsgColor('#ff5252')
     }
   }
-
-  const isWin = msgColor === '#00e676'
 
   return (
     <GameShell title="🎰 SLOT MACHINE" onBack={onBack} balance={balance}>
@@ -85,28 +142,46 @@ export default function SlotMachine({ balance, onBalanceChange, onBack }: GamePr
             <div
               key={i}
               style={{
-                width: 86,
-                height: 86,
+                width: SYMBOL_H,
+                height: SYMBOL_H,
+                overflow: 'hidden',
+                position: 'relative',
                 background: spinning
                   ? 'rgba(255,51,0,0.1)'
-                  : reels[0] === reels[1] && reels[1] === reels[2]
+                  : allSame
                     ? 'rgba(0,230,118,0.1)'
                     : 'rgba(255,255,255,0.05)',
                 borderRadius: 12,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 44,
                 border: spinning
                   ? '1px solid rgba(255,51,0,0.5)'
-                  : reels[0] === reels[1] && reels[1] === reels[2]
+                  : allSame
                     ? '1px solid rgba(0,230,118,0.5)'
                     : '1px solid rgba(255,255,255,0.08)',
-                transition: 'all 0.15s',
                 boxShadow: spinning ? '0 0 12px rgba(255,51,0,0.25)' : 'none',
+                transition: 'background 0.15s, border-color 0.15s, box-shadow 0.3s',
               }}
             >
-              {SYMBOLS[idx].icon}
+              {showStrips && reelStrips[i].length > 0 ? (
+                <div style={{ transform: `translateY(${reelOffsets[i]}px)`, willChange: 'transform' }}>
+                  {reelStrips[i].map((symIdx, j) => (
+                    <div key={j} style={{
+                      height: SYMBOL_H,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 44,
+                    }}>
+                      {SYMBOLS[symIdx].icon}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  height: SYMBOL_H,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 44,
+                }}>
+                  {SYMBOLS[idx].icon}
+                </div>
+              )}
             </div>
           ))}
         </div>

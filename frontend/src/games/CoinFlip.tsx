@@ -10,7 +10,6 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
   const [bet, setBet] = useState('10')
   const [chosen, setChosen] = useState<Side>('heads')
   const [flipping, setFlipping] = useState(false)
-  const [face, setFace] = useState<Side>('heads')
   const [message, setMessage] = useState('')
   const [msgColor, setMsgColor] = useState('#fff')
   const [history, setHistory] = useState<Side[]>([])
@@ -19,15 +18,62 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
   const [rounds, setRounds] = useState(0)
   const [wins, setWins] = useState(0)
   const [autoMode, setAutoMode] = useState(false)
+  const [coinAngle, setCoinAngle] = useState(0)
 
-  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null)
-  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const balanceRef   = useRef(balance)
-  balanceRef.current = balance
+  const coinSpinRef   = useRef<number | null>(null)
+  const coinAngleRef  = useRef(0)
+  const flippingRef   = useRef(false)
+  const streakTypeRef = useRef<'win' | 'loss' | null>(null)
+  const autoTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null)
+  const balanceRef    = useRef(balance)
+  balanceRef.current  = balance
 
-  const stop     = useCallback(() => { if (timerRef.current)     { clearInterval(timerRef.current);     timerRef.current     = null } }, [])
-  const stopAuto = useCallback(() => { if (autoTimerRef.current) { clearInterval(autoTimerRef.current); autoTimerRef.current = null } }, [])
-  useEffect(() => () => { stop(); stopAuto() }, [stop, stopAuto])
+  const stopAuto = useCallback(() => {
+    if (autoTimerRef.current) { clearInterval(autoTimerRef.current); autoTimerRef.current = null }
+  }, [])
+
+  useEffect(() => () => {
+    if (coinSpinRef.current) cancelAnimationFrame(coinSpinRef.current)
+    stopAuto()
+  }, [stopAuto])
+
+  function startSpin() {
+    function spin() {
+      coinAngleRef.current += 12
+      setCoinAngle(coinAngleRef.current)
+      coinSpinRef.current = requestAnimationFrame(spin)
+    }
+    coinSpinRef.current = requestAnimationFrame(spin)
+  }
+
+  function decelToResult(result: Side, onDone: () => void) {
+    if (coinSpinRef.current) cancelAnimationFrame(coinSpinRef.current)
+
+    const current   = coinAngleRef.current
+    const mod       = ((current % 360) + 360) % 360
+    const faceTarget = result === 'heads' ? 0 : 180
+    const diff      = ((faceTarget - mod) + 360) % 360
+    const target    = current + diff + 360 * 4
+
+    const startAngle = current
+    const startTime  = performance.now()
+    const duration   = 750
+
+    function frame(now: number) {
+      const t     = Math.min((now - startTime) / duration, 1)
+      const ease  = 1 - Math.pow(1 - t, 3)
+      const angle = startAngle + (target - startAngle) * ease
+      coinAngleRef.current = angle
+      setCoinAngle(angle)
+      if (t < 1) {
+        coinSpinRef.current = requestAnimationFrame(frame)
+      } else {
+        coinSpinRef.current = null
+        onDone()
+      }
+    }
+    coinSpinRef.current = requestAnimationFrame(frame)
+  }
 
   async function doFlip(currentChosen: Side) {
     const betVal = parseFloat(bet) || 0
@@ -39,35 +85,45 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
       return
     }
 
+    flippingRef.current = true
     setFlipping(true)
     setMessage('')
-    timerRef.current = setInterval(() => setFace(Math.random() < 0.5 ? 'heads' : 'tails'), 60)
+    startSpin()
 
     try {
-      const res = await api.coinFlip.flip(betVal, currentChosen)
-      stop()
-      const result = res.result as Side
-      setFace(result)
-      setFlipping(false)
-      setRounds(r => r + 1)
-      setHistory(h => [result, ...h].slice(0, LAST_N))
-      onBalanceChange(res.balance)
+      const res        = await api.coinFlip.flip(betVal, currentChosen)
+      const result     = res.result as Side
+      const newBalance = res.balance
+      const isWin      = res.win
+      const prize      = res.prize
+      const prevStreak = streakTypeRef.current
 
-      if (res.win) {
-        setWins(w => w + 1)
-        setMessage(`🎉 ${result === 'heads' ? '🪙 Cara' : '👑 Coroa'}! Ganhou R$ ${res.prize.toFixed(2)}!`)
-        setMsgColor('#00e676')
-        setStreak(s => streakType === 'win' ? s + 1 : 1)
-        setStreakType('win')
-      } else {
-        setMessage(`❌ ${result === 'heads' ? '🪙 Cara' : '👑 Coroa'}! Perdeu!`)
-        setMsgColor('#ff5252')
-        setStreak(s => streakType === 'loss' ? s + 1 : 1)
-        setStreakType('loss')
-      }
+      decelToResult(result, () => {
+        const newStreakType: 'win' | 'loss' = isWin ? 'win' : 'loss'
+        streakTypeRef.current = newStreakType
+
+        setFlipping(false)
+        flippingRef.current = false
+        setRounds(r => r + 1)
+        setHistory(h => [result, ...h].slice(0, LAST_N))
+        onBalanceChange(newBalance)
+        setStreak(s => prevStreak === newStreakType ? s + 1 : 1)
+        setStreakType(newStreakType)
+
+        if (isWin) {
+          setWins(w => w + 1)
+          setMessage(`🎉 ${result === 'heads' ? '🪙 Cara' : '👑 Coroa'}! Ganhou R$ ${prize.toFixed(2)}!`)
+          setMsgColor('#00e676')
+        } else {
+          setMessage(`❌ ${result === 'heads' ? '🪙 Cara' : '👑 Coroa'}! Perdeu!`)
+          setMsgColor('#ff5252')
+        }
+      })
     } catch (err: unknown) {
-      stop()
+      if (coinSpinRef.current) cancelAnimationFrame(coinSpinRef.current)
+      coinSpinRef.current = null
       setFlipping(false)
+      flippingRef.current = false
       setMessage(err instanceof Error ? err.message : 'Erro na conexão')
       setMsgColor('#ff5252')
     }
@@ -85,42 +141,54 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
     } else {
       setAutoMode(true)
       autoTimerRef.current = setInterval(() => {
-        if (!timerRef.current) doFlip(chosen)
+        if (!flippingRef.current) doFlip(chosen)
       }, 800)
     }
   }
 
-  const winRate    = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
-  const coinDisplay = face === 'heads' ? '🪙' : '👑'
-  const isWin = msgColor === '#00e676'
+  const winRate = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
+  const isWin   = msgColor === '#00e676'
 
   return (
     <GameShell title="🪙 COIN FLIP" onBack={onBack} balance={balance}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, maxWidth: 380, margin: '0 auto' }}>
 
-        {/* Coin */}
-        <div style={{
-          fontSize: 110,
-          lineHeight: 1,
-          filter: flipping ? 'brightness(0.5) saturate(0)' : 'brightness(1)',
-          transition: 'filter 0.08s',
-          userSelect: 'none',
-          textShadow: flipping ? 'none' : '0 0 30px rgba(187,187,0,0.4)',
-          padding: '10px 0',
-        }}>
-          {coinDisplay}
+        {/* 3D Coin */}
+        <div style={{ perspective: '300px', padding: '10px 0' }}>
+          <div style={{
+            width: 120, height: 120,
+            position: 'relative',
+            transformStyle: 'preserve-3d',
+            transform: `rotateY(${coinAngle}deg)`,
+          }}>
+            <div style={{
+              position: 'absolute', inset: 0,
+              backfaceVisibility: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 90, lineHeight: 1,
+              textShadow: flipping ? 'none' : '0 0 30px rgba(187,187,0,0.4)',
+              userSelect: 'none',
+            }}>🪙</div>
+            <div style={{
+              position: 'absolute', inset: 0,
+              backfaceVisibility: 'hidden',
+              transform: 'rotateY(180deg)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 90, lineHeight: 1,
+              textShadow: flipping ? 'none' : '0 0 30px rgba(0,170,170,0.4)',
+              userSelect: 'none',
+            }}>👑</div>
+          </div>
         </div>
 
         {/* Streak */}
         {streak > 1 && streakType && (
           <div style={{
-            fontWeight: 700,
-            fontSize: 14,
+            fontWeight: 700, fontSize: 14,
             color: streakType === 'win' ? '#00e676' : '#ff5252',
             background: streakType === 'win' ? 'rgba(0,230,118,0.08)' : 'rgba(255,82,82,0.08)',
             border: `1px solid ${streakType === 'win' ? 'rgba(0,230,118,0.2)' : 'rgba(255,82,82,0.2)'}`,
-            borderRadius: 8,
-            padding: '6px 16px',
+            borderRadius: 8, padding: '6px 16px',
           }}>
             {streakType === 'win' ? '🔥' : '❄️'} Sequência de {streakType === 'win' ? 'vitórias' : 'derrotas'}: {streak}×
           </div>
@@ -134,11 +202,7 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
               onClick={() => setChosen(s)}
               disabled={flipping || autoMode}
               style={{
-                flex: 1,
-                padding: '14px 0',
-                fontWeight: 700,
-                fontSize: 16,
-                borderRadius: 11,
+                flex: 1, padding: '14px 0', fontWeight: 700, fontSize: 16, borderRadius: 11,
                 background: chosen === s
                   ? s === 'heads' ? 'rgba(187,187,0,0.15)' : 'rgba(0,170,170,0.15)'
                   : 'rgba(255,255,255,0.03)',
@@ -170,14 +234,9 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
             onClick={handleFlip}
             disabled={flipping || autoMode}
             style={{
-              flex: 2,
-              background: flipping ? 'rgba(255,255,255,0.04)' : '#888800',
-              color: '#fff',
-              fontFamily: 'Orbitron, sans-serif',
-              fontWeight: 700,
-              fontSize: 14,
-              padding: '13px 0',
-              borderRadius: 10,
+              flex: 2, background: flipping ? 'rgba(255,255,255,0.04)' : '#888800',
+              color: '#fff', fontFamily: 'Orbitron, sans-serif', fontWeight: 700, fontSize: 14,
+              padding: '13px 0', borderRadius: 10,
               border: flipping ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
               letterSpacing: 1,
             }}
@@ -194,10 +253,7 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
               background: autoMode ? 'rgba(255,82,82,0.1)' : 'rgba(255,255,255,0.04)',
               color: autoMode ? '#ff5252' : '#555',
               border: autoMode ? '1px solid rgba(255,82,82,0.3)' : '1px solid rgba(255,255,255,0.07)',
-              fontWeight: 700,
-              fontSize: 13,
-              padding: '13px 0',
-              borderRadius: 10,
+              fontWeight: 700, fontSize: 13, padding: '13px 0', borderRadius: 10,
             }}
           >
             {autoMode ? '⏹ Parar' : '▶▶ Auto'}
@@ -209,12 +265,8 @@ export default function CoinFlip({ balance, onBalanceChange, onBack }: GameProps
             color: msgColor,
             background: isWin ? 'rgba(0,230,118,0.08)' : 'rgba(255,82,82,0.08)',
             border: `1px solid ${isWin ? 'rgba(0,230,118,0.25)' : 'rgba(255,82,82,0.25)'}`,
-            borderRadius: 10,
-            fontWeight: 700,
-            fontSize: 15,
-            textAlign: 'center',
-            padding: '12px 20px',
-            width: '100%',
+            borderRadius: 10, fontWeight: 700, fontSize: 15, textAlign: 'center',
+            padding: '12px 20px', width: '100%',
           }}>
             {message}
           </div>

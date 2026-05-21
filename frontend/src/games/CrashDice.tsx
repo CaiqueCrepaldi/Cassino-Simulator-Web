@@ -75,22 +75,24 @@ export default function CrashDice({ balance, onBalanceChange, onBack }: GameProp
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, maxWidth: 420, margin: '0 auto' }}>
 
         {/* Dice display */}
-        <div style={{
-          display: 'flex', gap: 20,
-          background: 'rgba(255,136,0,0.06)',
-          border: `1px solid ${rolling ? 'rgba(255,136,0,0.4)' : 'rgba(255,136,0,0.18)'}`,
-          padding: '28px 40px',
-          borderRadius: 16,
-          boxShadow: rolling ? '0 0 40px rgba(255,136,0,0.15)' : '0 4px 20px rgba(0,0,0,0.4)',
-          transition: 'all 0.3s',
-        }}>
+        <div
+          className={rolling ? 'dice-rolling' : undefined}
+          style={{
+            display: 'flex', gap: 20,
+            background: 'rgba(255,136,0,0.06)',
+            border: `1px solid ${rolling ? 'rgba(255,136,0,0.4)' : 'rgba(255,136,0,0.18)'}`,
+            padding: '28px 40px',
+            borderRadius: 16,
+            boxShadow: rolling ? '0 0 40px rgba(255,136,0,0.15)' : '0 4px 20px rgba(0,0,0,0.4)',
+            transition: 'border-color 0.3s, box-shadow 0.3s',
+          }}
+        >
           {[dice.d1, dice.d2].map((d, i) => (
             <div key={i} style={{
               fontSize: 72,
               lineHeight: 1,
-              filter: rolling ? 'brightness(0.6) saturate(0.5)' : 'brightness(1)',
-              transition: 'filter 0.1s',
               textShadow: rolling ? 'none' : '0 0 16px rgba(255,136,0,0.3)',
+              transition: 'text-shadow 0.2s',
             }}>
               {FACES[d - 1]}
             </div>
