@@ -1,4 +1,6 @@
-export const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
+// In production VITE_API_URL points to the deployed backend (e.g. Render).
+// In local dev it is unset, so BASE is '' — requests use the Vite proxy (/api → localhost:3001).
+export const BASE = import.meta.env.VITE_API_URL ?? ''
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {

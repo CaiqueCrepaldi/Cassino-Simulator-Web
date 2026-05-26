@@ -166,18 +166,21 @@ Usuário aposta:
 - Node.js 18+
 - npm 9+
 
-### Backend
+### Iniciar tudo de uma vez (recomendado)
 ```bash
-cd backend
+# Na raiz do projeto (instala dependências da raiz uma única vez)
 npm install
-npm run dev        # http://localhost:3001
+# Inicia backend (porta 3001) + frontend (porta 5173) simultaneamente
+npm run dev:live
 ```
 
-### Frontend
+### Ou separadamente
 ```bash
-cd frontend
-npm install
-npm run dev        # http://localhost:5173
+# Terminal 1 — Backend
+cd backend && npm install && npm run dev
+
+# Terminal 2 — Frontend
+cd frontend && npm install && npm run dev
 ```
 
 ### Testes
