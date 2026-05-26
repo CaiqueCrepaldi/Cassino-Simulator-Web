@@ -34,10 +34,19 @@ function betPayout(bet: RouletteBet, result: number): number {
   return 0
 }
 
-export function spinWheel(bets: RouletteBet[]): RouletteResult {
+export function rollNumber(): { number: number; color: 'red' | 'black' | 'green' } {
   const number = Math.floor(Math.random() * 37)
-  const color: RouletteResult['color'] = number === 0 ? 'green' : RED_NUMBERS.has(number) ? 'red' : 'black'
+  const color  = number === 0 ? 'green' : RED_NUMBERS.has(number) ? 'red' : 'black'
+  return { number, color }
+}
+
+export function calculateWin(bets: RouletteBet[], number: number): number {
+  return bets.reduce((s, b) => s + betPayout(b, number), 0)
+}
+
+export function spinWheel(bets: RouletteBet[]): RouletteResult {
+  const { number, color } = rollNumber()
   const totalBet = bets.reduce((s, b) => s + b.amount, 0)
-  const totalWin = bets.reduce((s, b) => s + betPayout(b, number), 0)
+  const totalWin = calculateWin(bets, number)
   return { number, color, totalBet, totalWin, prize: totalWin }
 }

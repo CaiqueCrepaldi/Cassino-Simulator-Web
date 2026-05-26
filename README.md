@@ -18,6 +18,8 @@ A resposta foi reescrever tudo em TypeScript — a linguagem que o mercado exige
 
 **Cassino Simulator Web** é uma aplicação full-stack que replica 8 jogos clássicos de cassino em uma interface dark moderna. O backend em Express valida apostas, executa toda a lógica de jogo e gerencia o saldo. O frontend em React consome a API e entrega animações fluidas ao usuário.
 
+Quatro jogos rodam em **modo ao vivo 24/7** (Aviator, Double, Roleta e Baccarat): o servidor mantém um loop contínuo transmitindo o estado em tempo real via **Server-Sent Events**. O histórico de cada rodada é persistido em disco para sobreviver a reinicializações.
+
 Nenhum dinheiro real está envolvido. O saldo é virtual (R$ 1.000,00 inicial) e existe apenas em memória.
 
 ---
@@ -38,16 +40,16 @@ Nenhum dinheiro real está envolvido. O saldo é virtual (R$ 1.000,00 inicial) e
 
 ## Jogos Disponíveis
 
-| Jogo | Mecânica | Pagamento máximo |
-|------|----------|-----------------|
-| 🎰 Slot Machine | 3 rolos com símbolos ponderados | 3× |
-| ✈️ Aviator | Multiplicador exponencial + cash-out | Ilimitado |
-| 🎡 Double | Roda com 14 segmentos animada em canvas | 14× |
-| 🎲 Crash Dice | 2 dados com prioridade de prêmio | 5× |
-| 🃏 Blackjack | Baralho completo com Hit/Stand/Double | 2.5× (Blackjack) |
-| 🎡 Roleta | Roleta europeia com apostas múltiplas | 35× |
-| 🪙 Coin Flip | 50/50 com modo automático e streak | 2× |
-| 🎴 Baccarat | Regras completas de compra | 8× (Empate) |
+| Jogo | Modo | Mecânica | Pagamento máximo |
+|------|------|----------|-----------------|
+| 🎰 Slot Machine | Clássico | 3 rolos com símbolos ponderados | 3× |
+| ✈️ Aviator | **Ao vivo 24/7** | Multiplicador exponencial + cash-out | Ilimitado |
+| 🎡 Double | **Ao vivo 24/7** | Roda com 14 segmentos animada em canvas | 14× |
+| 🎲 Crash Dice | Clássico | 2 dados com prioridade de prêmio | 5× |
+| 🃏 Blackjack | Clássico | Baralho completo com Hit/Stand/Double | 2.5× (Blackjack) |
+| 🎡 Roleta | **Ao vivo 24/7** | Roleta europeia com apostas múltiplas | 35× |
+| 🪙 Coin Flip | Clássico | 50/50 com modo automático e streak | 2× |
+| 🎴 Baccarat | **Ao vivo 24/7** | Regras completas de compra | 8× (Empate) |
 
 ---
 
@@ -63,6 +65,7 @@ cassino-simulator-web/
 │       │   └── Menu.tsx       # Tela inicial com saldo e navegação
 │       └── games/
 │           ├── GameShell.tsx  # Layout compartilhado (header + voltar)
+│           ├── LiveIndicator.tsx  # Indicador AO VIVO / RECONECTANDO
 │           ├── SlotMachine.tsx
 │           ├── Aviator.tsx
 │           ├── Double.tsx
@@ -75,15 +78,25 @@ cassino-simulator-web/
 └── backend/                   # Node.js + Express + TypeScript
     ├── src/
     │   ├── balance.ts         # Saldo em memória (deduct / credit / reset)
+    │   ├── persist.ts         # Persistência do histórico em game-history.json
     │   ├── index.ts           # Entry point Express + rota de health
+    │   ├── gameLoop/          # Loops 24/7 dos jogos ao vivo
+    │   │   ├── subscribeSSE.ts    # Helper SSE compartilhado
+    │   │   ├── AviatorRoom.ts
+    │   │   ├── RouletteRoom.ts
+    │   │   ├── DoubleRoom.ts
+    │   │   └── BaccaratRoom.ts
     │   ├── routes/            # Um arquivo por jogo + balance
+    │   │   ├── stream.ts      # GET /api/live/:game/stream (SSE)
+    │   │   └── livebet.ts     # POST /api/live/:game/bet (apostas ao vivo)
     │   └── services/          # Lógica pura de jogo (sem side-effects)
+    ├── src/*.test.ts          # Testes unitários colocalizados
     └── tests/
         ├── services/          # Testes unitários dos serviços
         └── routes/            # Testes de integração via Supertest
 ```
 
-### Fluxo de dados
+### Fluxo de dados — Jogos Clássicos
 
 ```
 Usuário → [React Component]
@@ -97,12 +110,30 @@ Usuário → [React Component]
           Animação + resultado exibido
 ```
 
+### Fluxo de dados — Jogos Ao Vivo (SSE)
+
+```
+Servidor                              Frontend
+────────                              ────────
+GameRoom (loop 24/7)
+  betting phase (20s countdown)  →  EventSource /api/live/aviator/stream
+  flying phase (100ms ticks)     →  onmessage → atualiza canvas/animação
+  crashed phase (5s countdown)   →  exibe resultado + histórico
+
+Usuário aposta:
+  POST /api/live/aviator/bet     →  GameRoom.setPendingBet()
+                                    (liquidado no início do próximo voo)
+```
+
 ### Decisões de design
 
 - **Lógica no servidor**: toda validação de aposta e cálculo de resultado vive no backend. O frontend é responsável apenas por animações e UX.
-- **Stateless por padrão**: serviços de jogo são funções puras (sem estado interno). O Blackjack envia o estado do baralho em cada request.
-- **Saldo em memória**: sem banco de dados — adequado para um protótipo acadêmico. Persiste enquanto o servidor estiver rodando.
+- **Loops ao vivo**: os quatro jogos ao vivo rodam em `while(true)` assíncronos com `try/catch` e recuperação automática de erros — o loop nunca para.
+- **SSE em vez de WebSocket**: Server-Sent Events são suficientes para o fluxo unidirecional servidor→cliente, mais simples de escalar e sem dependências extras.
+- **Persistência leve**: o histórico de cada jogo ao vivo é salvo em `game-history.json` via `fs/promises.writeFile` (não-bloqueante). Sem banco de dados.
+- **Stateless por padrão**: serviços de jogo clássicos são funções puras (sem estado interno). O Blackjack envia o estado do baralho em cada request.
 - **API tipada**: o `client.ts` expõe tipos de retorno para cada endpoint, evitando erros de contrato.
+- **Validação de entrada**: todas as rotas de aposta ao vivo validam tipo, faixa e enumeração dos parâmetros antes de processar.
 
 ---
 
@@ -112,6 +143,7 @@ Usuário → [React Component]
 - **React 18** — UI reativa com Suspense e lazy loading por jogo
 - **TypeScript** — tipagem estrita em todo o projeto
 - **Vite** — build tool moderno, HMR instantâneo
+- **EventSource (SSE)** — conexão ao vivo com auto-reconexão nativa
 - CSS inline com dark theme (`#0d0d0d` base)
 
 ### Backend
@@ -119,11 +151,12 @@ Usuário → [React Component]
 - **Express 4** — roteamento REST simples e performático
 - **TypeScript** — tipagem nos serviços, rotas e modelos
 - **tsx** — execução direta de TypeScript em desenvolvimento
+- **SSE** — `text/event-stream` com heartbeat a cada 20s para manter conexões vivas
 
 ### Testes
 - **Vitest** — framework de testes moderno (compatível com Vite)
 - **Supertest** — testes de integração HTTP sem levantar servidor real
-- **63 testes**: 41 unitários (serviços) + 22 de integração (rotas)
+- **98 testes**: unitários (serviços + balance) + integração (rotas)
 
 ---
 
@@ -150,7 +183,7 @@ npm run dev        # http://localhost:5173
 ### Testes
 ```bash
 cd backend
-npm test           # roda os 63 testes
+npm test           # roda os 98 testes
 npm run test:watch # modo watch
 ```
 
@@ -166,6 +199,8 @@ PORT=3001
 ---
 
 ## API Reference
+
+### Jogos Clássicos
 
 | Método | Endpoint | Body | Descrição |
 |--------|----------|------|-----------|
@@ -183,6 +218,19 @@ PORT=3001
 | `POST` | `/api/games/blackjack/stand` | `{ bet, playerHand, dealerHand, deck, doubled? }` | Passa a vez |
 | `POST` | `/api/games/baccarat/deal` | `{ bet, chosen }` | Joga baccarat completo |
 
+### Jogos Ao Vivo (SSE)
+
+| Método | Endpoint | Body | Descrição |
+|--------|----------|------|-----------|
+| `GET`  | `/api/live/aviator/stream` | — | Stream SSE do Aviator |
+| `GET`  | `/api/live/roulette/stream` | — | Stream SSE da Roleta |
+| `GET`  | `/api/live/double/stream` | — | Stream SSE do Double |
+| `GET`  | `/api/live/baccarat/stream` | — | Stream SSE do Baccarat |
+| `POST` | `/api/live/aviator/bet` | `{ bet, roundId }` | Aposta no Aviator ao vivo |
+| `POST` | `/api/live/roulette/bet` | `{ bets[], roundId }` | Aposta na Roleta ao vivo |
+| `POST` | `/api/live/double/bet` | `{ bet, chosen, roundId }` | Aposta no Double ao vivo |
+| `POST` | `/api/live/baccarat/bet` | `{ bet, chosen, roundId }` | Aposta no Baccarat ao vivo |
+
 ---
 
 ## Histórico de Commits
@@ -190,17 +238,15 @@ PORT=3001
 O projeto foi desenvolvido com commits semânticos, um por jogo:
 
 ```
+feat: 24/7 live game loops, SSE countdowns, history persistence, 98 automated tests
+feat: Aviator canvas animation, 24/7 loop, card deal animations
+feat: complete visual redesign — Orbitron, glassmorphism, glow effects
+fix: make vite base path configurable via env var
+ci: add Render config and wire VITE_API_URL secret into Pages build
+ci: add GitHub Actions workflow for Pages deployment
 feat(frontend): integrate all games with backend REST API
 feat: add backend — Express API, game services and automated tests
-refactor: move frontend files into frontend/ subdirectory
-feat: add Baccarat game
-feat: add Blackjack game
-feat: add Coin Flip game
-feat: add Roulette game
-feat: add Crash Dice game
-feat: add Double game
-feat: add Aviator game
-chore: initial project setup — React + TypeScript casino simulator
+...
 ```
 
 ---

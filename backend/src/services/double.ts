@@ -30,10 +30,15 @@ export interface SpinResult {
   prize: number
 }
 
-export function spinWheel(bet: number, chosen: SegmentType): SpinResult {
+export function rollSegment(): { segmentIndex: number; type: SegmentType; mult: number } {
   const segmentIndex = Math.floor(Math.random() * SEGMENTS.length)
   const seg = SEGMENTS[segmentIndex]
-  const win = seg.type === chosen
-  const prize = win ? bet * seg.mult : 0
-  return { segmentIndex, type: seg.type, multiplier: seg.mult, win, prize }
+  return { segmentIndex, type: seg.type, mult: seg.mult }
+}
+
+export function spinWheel(bet: number, chosen: SegmentType): SpinResult {
+  const { segmentIndex, type, mult } = rollSegment()
+  const win   = type === chosen
+  const prize = win ? bet * mult : 0
+  return { segmentIndex, type, multiplier: mult, win, prize }
 }

@@ -1,72 +1,70 @@
 import { useState, useRef, useEffect } from 'react'
 import type { GameProps } from '../types'
 import GameShell from './GameShell'
-import { api } from '../api/client'
+import { BASE } from '../api/client'
+import { LiveIndicator } from './LiveIndicator'
 
-const MAX_HISTORY = 10
-const BETTING_SEC  = 5
-const TICK_MS      = 100
-const MULT_FACTOR  = 1.015
+type Phase = 'betting' | 'flying' | 'crashed'
 
-function localCrash(): number {
-  return Math.max(1.01, +(-Math.log(Math.random()) * 0.85 + 1.0).toFixed(2))
+interface LiveState {
+  phase: Phase
+  countdown: number
+  multiplier: number
+  history: number[]
+  roundId: string
 }
 
 export default function Aviator({ balance, onBalanceChange, onBack }: GameProps) {
-  const [bet,          setBet]         = useState('10')
-  const [autoCashout,  setAutoCashout] = useState('')
-  const [autoEnabled,  setAutoEnabled] = useState(false)
-  const [phase,        setPhase]       = useState<'betting' | 'flying' | 'crashed'>('betting')
-  const [countdown,    setCountdown]   = useState(BETTING_SEC)
-  const [multiplier,   setMultiplier]  = useState(1.0)
-  const [cashedOut,    setCashedOut]   = useState(false)
-  const [betPlaced,    setBetPlaced]   = useState(false)
-  const [message,      setMessage]     = useState('')
-  const [msgColor,     setMsgColor]    = useState('#fff')
-  const [history,      setHistory]     = useState<number[]>([])
-  const [rounds,       setRounds]      = useState(0)
-  const [wins,         setWins]        = useState(0)
-  const [bestMult,     setBestMult]    = useState(0)
+  const [bet,         setBet]        = useState('10')
+  const [autoCashout, setAutoCashout]= useState('')
+  const [autoEnabled, setAutoEnabled]= useState(false)
+  const [phase,       setPhase]      = useState<Phase>('betting')
+  const [countdown,   setCountdown]  = useState(5)
+  const [multiplier,  setMultiplier] = useState(1.0)
+  const [cashedOut,   setCashedOut]  = useState(false)
+  const [betPlaced,   setBetPlaced]  = useState(false)
+  const [message,     setMessage]    = useState('')
+  const [msgColor,    setMsgColor]   = useState('#fff')
+  const [connected,   setConnected]  = useState(false)
+  const [history,     setHistory]    = useState<number[]>([])
+  const [rounds,      setRounds]     = useState(0)
+  const [wins,        setWins]       = useState(0)
+  const [bestMult,    setBestMult]   = useState(0)
 
-  // Refs kept in sync for interval-safe reads
-  const betRef          = useRef('10')
-  const autoEnabledRef  = useRef(false)
-  const autoCashoutRef  = useRef('')
-  const betPlacedRef    = useRef(false)
-  const cashedOutRef    = useRef(false)
-  const crashedRef      = useRef(false)
-  const crashRef        = useRef(1.0)
-  const multRef         = useRef(1.0)
-  const tickRef         = useRef(0)
-  const phasedBet       = useRef(0)
-  const balanceRef      = useRef(balance)
-  balanceRef.current    = balance
+  const betRef         = useRef('10')
+  const autoEnabledRef = useRef(false)
+  const autoCashoutRef = useRef('')
+  const betPlacedRef   = useRef(false)
+  const cashedOutRef   = useRef(false)
+  const connectedRef   = useRef(false)
+  const roundIdRef     = useRef('')
+  const phasedBet      = useRef(0)
+  const balanceRef     = useRef(balance)
+  balanceRef.current   = balance
+  const prevPhaseRef   = useRef<Phase>('betting')
+  const phaseRef       = useRef<Phase>('betting')
 
-  const flyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const cntIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const rafRef         = useRef<number | null>(null)
-  const pointsRef      = useRef<{ x: number; y: number }[]>([])
-  const canvasRef      = useRef<HTMLCanvasElement>(null)
+  const canvasRef  = useRef<HTMLCanvasElement>(null)
+  const rafRef     = useRef<number | null>(null)
+  const pointsRef  = useRef<{ x: number; y: number }[]>([])
+  const tickRef    = useRef(0)
 
-  useEffect(() => { betRef.current         = bet },         [bet])
+  useEffect(() => { betRef.current         = bet         }, [bet])
   useEffect(() => { autoEnabledRef.current = autoEnabled }, [autoEnabled])
   useEffect(() => { autoCashoutRef.current = autoCashout }, [autoCashout])
 
-  // ── Canvas ──────────────────────────────────────────────────────────────────
+  // ── Canvas ─────────────────────────────────────────────────────────────────
   function drawCanvas() {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    const W = canvas.width
-    const H = canvas.height
-    const crashed   = crashedRef.current
+    const W = canvas.width, H = canvas.height
+    const crashed   = phaseRef.current === 'crashed'
     const cashedNow = cashedOutRef.current
     const lineColor = crashed && !cashedNow ? '#ff4444' : '#0099FF'
 
     ctx.clearRect(0, 0, W, H)
-
-    // Grid
     ctx.strokeStyle = 'rgba(255,255,255,0.03)'
     ctx.lineWidth = 1
     for (let x = 0; x <= W; x += 64) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke() }
@@ -75,7 +73,6 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
     const pts = pointsRef.current
     if (pts.length < 2) return
 
-    // Gradient fill
     const grad = ctx.createLinearGradient(0, H, 0, 0)
     if (crashed && !cashedNow) {
       grad.addColorStop(0, 'rgba(255,68,68,0)')
@@ -92,7 +89,6 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
     ctx.closePath()
     ctx.fill()
 
-    // Curve line
     ctx.strokeStyle = lineColor
     ctx.lineWidth = 2.5
     ctx.shadowBlur = 8
@@ -103,7 +99,6 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
     ctx.stroke()
     ctx.shadowBlur = 0
 
-    // Plane / explosion at tip
     const last = pts[pts.length - 1]
     const prev = pts[Math.max(pts.length - 5, 0)]
     const angle = Math.atan2(prev.y - last.y, last.x - prev.x)
@@ -118,168 +113,157 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
   }
 
   function startRaf() {
-    stopRaf()
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
     const loop = () => { drawCanvas(); rafRef.current = requestAnimationFrame(loop) }
     rafRef.current = requestAnimationFrame(loop)
   }
-  function stopRaf()  { if (rafRef.current)         { cancelAnimationFrame(rafRef.current);     rafRef.current         = null } }
-  function stopFly()  { if (flyIntervalRef.current)  { clearInterval(flyIntervalRef.current);    flyIntervalRef.current = null } }
-  function stopCnt()  { if (cntIntervalRef.current)  { clearInterval(cntIntervalRef.current);    cntIntervalRef.current = null } }
-
-  // ── startBetting ref (avoids stale closure in setTimeout) ──────────────────
-  const startBettingRef = useRef<() => void>(() => {})
-
-  // ── Betting phase ───────────────────────────────────────────────────────────
-  function startBetting() {
-    stopFly(); stopCnt(); stopRaf()
-    betPlacedRef.current  = false
-    cashedOutRef.current  = false
-    crashedRef.current    = false
-    multRef.current       = 1.0
-    tickRef.current       = 0
-    pointsRef.current     = []
-
-    setPhase('betting'); setCountdown(BETTING_SEC); setBetPlaced(false)
-    setCashedOut(false);  setMessage('');             setMultiplier(1.0)
-
-    const canvas = canvasRef.current
-    if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
-
-    let cnt = BETTING_SEC
-    cntIntervalRef.current = setInterval(() => {
-      cnt--
-      setCountdown(cnt)
-      if (cnt <= 0) { stopCnt(); startFlightInternal() }
-    }, 1000)
+  function stopRaf() {
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
   }
-  startBettingRef.current = startBetting
 
-  // ── Flight ──────────────────────────────────────────────────────────────────
-  async function startFlightInternal() {
-    const placed = betPlacedRef.current
-    const betVal = parseFloat(betRef.current) || 0
-    let crashAt: number
+  useEffect(() => {
+    const es = new EventSource(`${BASE}/api/stream/aviator`)
+    es.onopen  = () => { connectedRef.current = true;  setConnected(true) }
+    es.onerror = () => { connectedRef.current = false; setConnected(false) }
 
-    try {
-      if (placed && betVal > 0) {
-        const res = await api.aviator.generate(betVal)
-        crashAt = res.crashAt
-        phasedBet.current = betVal
-        onBalanceChange(res.balance)
-      } else {
-        crashAt = localCrash()
-      }
-    } catch {
-      crashAt = localCrash()
-      betPlacedRef.current = false
-      setBetPlaced(false)
-      phasedBet.current = 0
-    }
+    es.onmessage = (e) => {
+      if (!connectedRef.current) { connectedRef.current = true; setConnected(true) }
+      const s    = JSON.parse(e.data) as LiveState
+      const prev = prevPhaseRef.current
 
-    crashRef.current = crashAt
-    multRef.current  = 1.0
-    tickRef.current  = 0
-
-    const W = canvasRef.current?.width  ?? 520
-    const H = canvasRef.current?.height ?? 200
-    pointsRef.current = [{ x: 20, y: H - 15 }]
-
-    setPhase('flying')
-    setMultiplier(1.0)
-    startRaf()
-
-    flyIntervalRef.current = setInterval(() => {
-      tickRef.current++
-      const t    = tickRef.current
-      const mult = parseFloat(Math.pow(MULT_FACTOR, t).toFixed(2))
-      multRef.current = mult
-      setMultiplier(mult)
-
-      // Add canvas point
-      const xProg = Math.min(t / 90, 1)
-      const x     = 20 + (W - 50) * xProg
-      const rise  = Math.pow(Math.max(mult - 1, 0) / 9, 0.65)
-      const y     = Math.max(H - 15 - rise * (H - 30), 8)
-      pointsRef.current = [...pointsRef.current, { x, y }]
-
-      // Auto cashout
-      if (autoEnabledRef.current && betPlacedRef.current && !cashedOutRef.current) {
-        const av = parseFloat(autoCashoutRef.current)
-        if (!isNaN(av) && av > 1 && mult >= av) { doWin(phasedBet.current, mult); return }
+      if (s.phase === 'betting' && prev !== 'betting') {
+        betPlacedRef.current = false
+        cashedOutRef.current = false
+        phasedBet.current    = 0
+        setBetPlaced(false)
+        setCashedOut(false)
+        setMessage('')
+        pointsRef.current = []
+        tickRef.current   = 0
+        stopRaf()
+        const canvas = canvasRef.current
+        if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
       }
 
-      // Crash
-      if (mult >= crashAt) {
-        stopFly()
-        crashedRef.current = true
-        setPhase('crashed')
+      if (s.phase === 'flying' && prev !== 'flying') {
+        pointsRef.current = [{ x: 20, y: (canvasRef.current?.height ?? 200) - 15 }]
+        tickRef.current   = 0
+        startRaf()
+      }
+
+      if (s.phase === 'flying') {
+        const W = canvasRef.current?.width  ?? 520
+        const H = canvasRef.current?.height ?? 200
+        tickRef.current++
+        const t     = tickRef.current
+        const xProg = Math.min(t / 90, 1)
+        const x     = 20 + (W - 50) * xProg
+        const rise  = Math.pow(Math.max(s.multiplier - 1, 0) / 9, 0.65)
+        const y     = Math.max(H - 15 - rise * (H - 30), 8)
+        pointsRef.current.push({ x, y })
+
+        if (autoEnabledRef.current && betPlacedRef.current && !cashedOutRef.current) {
+          const av = parseFloat(autoCashoutRef.current)
+          if (!isNaN(av) && av > 1 && s.multiplier >= av) performCashout(s.roundId)
+        }
+      }
+
+      if (s.phase === 'crashed' && prev === 'flying') {
+        stopRaf()
         setRounds(r => r + 1)
-        setHistory(h => [crashAt, ...h].slice(0, MAX_HISTORY))
-
+        setHistory(s.history)
         if (betPlacedRef.current && !cashedOutRef.current) {
-          setMessage(`💥 Caiu em ${crashAt.toFixed(2)}× — Perdeu R$ ${phasedBet.current.toFixed(2)}!`)
+          setMessage(`💥 Caiu em ${s.multiplier.toFixed(2)}× — Perdeu R$ ${phasedBet.current.toFixed(2)}!`)
           setMsgColor('#ff5252')
-        } else {
-          setMessage(`💥 Avião caiu em ${crashAt.toFixed(2)}×`)
+        } else if (!betPlacedRef.current) {
+          setMessage(`💥 Avião caiu em ${s.multiplier.toFixed(2)}×`)
           setMsgColor('#ff5252')
         }
-        setTimeout(() => startBettingRef.current(), 3000)
       }
-    }, TICK_MS)
-  }
 
-  // ── Cash out ────────────────────────────────────────────────────────────────
-  function doWin(betVal: number, mult: number) {
-    stopFly()
+      prevPhaseRef.current = s.phase
+      phaseRef.current     = s.phase
+      roundIdRef.current   = s.roundId
+      setPhase(s.phase)
+      setCountdown(s.countdown)
+      setMultiplier(s.multiplier)
+    }
+
+    return () => { es.close(); stopRaf() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+  async function performCashout(roundId: string) {
+    if (cashedOutRef.current) return
     cashedOutRef.current = true
     setCashedOut(true)
-    setPhase('crashed')
-    setRounds(r => r + 1)
-    setWins(w => w + 1)
-    setBestMult(prev => mult > prev ? mult : prev)
-    setHistory(h => [crashRef.current, ...h].slice(0, MAX_HISTORY))
-
-    api.aviator.settle(betVal, crashRef.current, mult)
-      .then(r => {
-        onBalanceChange(r.balance)
-        setMessage(`✅ Retirou em ${mult.toFixed(2)}× — Ganhou R$ ${r.prize.toFixed(2)}!`)
-        setMsgColor('#00e676')
+    try {
+      const res  = await fetch(`${BASE}/api/live/aviator/cashout`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundId }),
       })
-      .catch(() => {})
-
-    setTimeout(() => startBettingRef.current(), 3000)
+      const data = await res.json() as { balance?: number; prize?: number; mult?: number; error?: string }
+      if (res.ok) {
+        onBalanceChange(data.balance!)
+        setWins(w => w + 1)
+        setBestMult(prev => data.mult! > prev ? data.mult! : prev)
+        setMessage(`✅ Retirou em ${data.mult!.toFixed(2)}× — Ganhou R$ ${data.prize!.toFixed(2)}!`)
+        setMsgColor('#00e676')
+      } else {
+        cashedOutRef.current = false
+        setCashedOut(false)
+        setMessage(data.error ?? 'Erro ao retirar')
+        setMsgColor('#ff5252')
+      }
+    } catch {
+      cashedOutRef.current = false
+      setCashedOut(false)
+    }
   }
 
   function handleCashout() {
-    if (phase !== 'flying' || cashedOutRef.current || !betPlacedRef.current) return
-    doWin(phasedBet.current, multRef.current)
+    if (phaseRef.current !== 'flying' || cashedOutRef.current || !betPlacedRef.current) return
+    performCashout(roundIdRef.current)
   }
 
-  function placeBet() {
-    if (phase !== 'betting' || betPlaced) return
+  async function placeBet() {
+    if (phaseRef.current !== 'betting' || betPlacedRef.current) return
     const betVal = parseFloat(betRef.current) || 0
-    if (betVal <= 0 || betVal > balanceRef.current) { setMessage('Aposta inválida!'); setMsgColor('#ff5252'); return }
-    betPlacedRef.current = true
-    setBetPlaced(true)
-    setMessage('')
+    if (betVal <= 0 || betVal > balanceRef.current) {
+      setMessage('Aposta inválida!'); setMsgColor('#ff5252'); return
+    }
+    try {
+      const res  = await fetch(`${BASE}/api/live/aviator/bet`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bet: betVal, roundId: roundIdRef.current }),
+      })
+      const data = await res.json() as { balance?: number; error?: string }
+      if (res.ok) {
+        betPlacedRef.current = true
+        phasedBet.current    = betVal
+        setBetPlaced(true)
+        onBalanceChange(data.balance!)
+        setMessage('')
+      } else {
+        setMessage(data.error ?? 'Erro ao apostar')
+        setMsgColor('#ff5252')
+      }
+    } catch {
+      setMessage('Erro na conexão'); setMsgColor('#ff5252')
+    }
   }
 
   function addToBet(amount: number) {
-    if (phase === 'flying' || betPlaced) return
+    if (phaseRef.current === 'flying' || betPlacedRef.current) return
     const next = String((parseFloat(betRef.current) || 0) + amount)
     betRef.current = next
     setBet(next)
   }
 
-  useEffect(() => {
-    startBettingRef.current()
-    return () => { stopFly(); stopCnt(); stopRaf() }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const winRate = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
-  const isWin   = msgColor === '#00e676'
-
+  // ── Render ─────────────────────────────────────────────────────────────────
+  const winRate  = rounds > 0 ? ((wins / rounds) * 100).toFixed(1) : '0.0'
+  const isWin    = msgColor === '#00e676'
   const multColor = phase === 'crashed' && !cashedOut
     ? '#ff4444'
     : multiplier >= 3 ? '#00e676' : multiplier >= 2 ? '#FFD700' : '#fff'
@@ -288,7 +272,9 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
     <GameShell title="✈️ AVIATOR" onBack={onBack} balance={balance}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, maxWidth: 540, margin: '0 auto' }}>
 
-        {/* Crash history bar */}
+        <LiveIndicator connected={connected} />
+
+        {/* Crash history */}
         <div style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 8,
           background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)',
@@ -312,7 +298,7 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
           </div>
         </div>
 
-        {/* Canvas flight area */}
+        {/* Canvas */}
         <div style={{
           width: '100%', position: 'relative',
           background: 'rgba(0,6,20,0.95)',
@@ -328,16 +314,13 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
           <canvas ref={canvasRef} width={520} height={200}
             style={{ width: '100%', height: 200, display: 'block' }} />
 
-          {/* Betting countdown overlay */}
           {phase === 'betting' && (
             <div style={{
               position: 'absolute', inset: 0,
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               background: 'rgba(0,0,0,0.68)',
             }}>
-              <div style={{ fontSize: 11, color: '#666', letterSpacing: 2, marginBottom: 8 }}>
-                PRÓXIMO VOO EM
-              </div>
+              <div style={{ fontSize: 11, color: '#666', letterSpacing: 2, marginBottom: 8 }}>PRÓXIMO VOO EM</div>
               <div style={{
                 fontSize: 68, fontFamily: 'Orbitron, sans-serif', fontWeight: 900, lineHeight: 1,
                 color: countdown <= 2 ? '#ff4444' : '#FFD700',
@@ -358,7 +341,6 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
             </div>
           )}
 
-          {/* Multiplier overlay during flight / crash */}
           {phase !== 'betting' && (
             <div style={{
               position: 'absolute', top: '50%', left: '50%',
@@ -375,15 +357,18 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
               <div style={{ fontSize: 10, color: '#555', letterSpacing: 1.5, marginTop: 5 }}>
                 {phase === 'flying' ? 'VOANDO' : cashedOut ? '✅ RETIRADO' : '💥 CRASH'}
               </div>
+              {phase === 'crashed' && (
+                <div style={{ fontSize: 11, color: '#555', letterSpacing: 1.5, marginTop: 8 }}>
+                  PRÓXIMO VOO EM <span style={{ color: '#FFD700', fontFamily: 'Orbitron, sans-serif', fontWeight: 900 }}>{countdown}s</span>
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Auto cashout */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-          <span style={{ color: '#FFD700', fontSize: 12, whiteSpace: 'nowrap' }}>
-            ⚡ Saque Automático:
-          </span>
+          <span style={{ color: '#FFD700', fontSize: 12, whiteSpace: 'nowrap' }}>⚡ Saque Automático:</span>
           <input
             type="text" placeholder="Ex: 2.00x"
             value={autoCashout}
@@ -408,9 +393,7 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
           >
             {autoEnabled ? 'ON' : 'OFF'}
           </button>
-          {!autoEnabled && (
-            <span style={{ color: '#333', fontSize: 11, whiteSpace: 'nowrap' }}>Desativado</span>
-          )}
+          {!autoEnabled && <span style={{ color: '#333', fontSize: 11, whiteSpace: 'nowrap' }}>Desativado</span>}
         </div>
 
         {/* Bet row */}
@@ -435,7 +418,7 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
           ))}
         </div>
 
-        {/* Action buttons */}
+        {/* Buttons */}
         <div style={{ display: 'flex', gap: 10, width: '100%' }}>
           <button
             onClick={placeBet}
@@ -489,8 +472,12 @@ export default function Aviator({ balance, onBalanceChange, onBack }: GameProps)
 
         <button
           onClick={() =>
-            api.balance.reset()
-              .then(r => { onBalanceChange(r.balance); setMessage(''); setRounds(0); setWins(0); setBestMult(0) })
+            fetch(`${BASE}/api/balance/reset`, { method: 'POST' })
+              .then(r => r.json())
+              .then((d: { balance: number }) => {
+                onBalanceChange(d.balance)
+                setMessage(''); setRounds(0); setWins(0); setBestMult(0)
+              })
               .catch(() => {})
           }
           style={{
